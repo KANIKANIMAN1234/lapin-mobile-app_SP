@@ -53,7 +53,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIs...
 NEXT_PUBLIC_LIFF_ID=1234567890-xxxxxxxx
 NEXT_PUBLIC_LINE_LOGIN_CHANNEL_ID=1234567890
 
-NEXT_PUBLIC_APP_URL=https://lapin-mobile.vercel.app
+NEXT_PUBLIC_APP_URL=https://lapin-mobile-app-sp.vercel.app
 ```
 
 ### 3. 開発サーバー起動
