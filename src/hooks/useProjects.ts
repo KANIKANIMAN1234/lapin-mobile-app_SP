@@ -106,7 +106,7 @@ export function useProjects() {
     queryFn: async () => {
       try {
         const { data, error } = await supabase
-          .from('projects')
+          .from('t_projects')
           .select('*')
           .is('deleted_at', null)
           .order('updated_at', { ascending: false });

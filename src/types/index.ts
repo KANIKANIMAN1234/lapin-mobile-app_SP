@@ -55,12 +55,13 @@ export interface Expense {
   project_number?: string;
   customer_name?: string;
   amount: number;
-  date: string;
+  expense_date: string;
   category: string;
   memo?: string;
-  receipt_url?: string;
+  receipt_image_url?: string;
   user_id: string;
   user_name?: string;
+  status?: 'pending' | 'approved' | 'rejected';
   created_at: string;
 }
 
@@ -69,7 +70,9 @@ export type ExpenseCategory =
   | '交通費'
   | '外注費'
   | '消耗品費'
-  | '飲食費'
+  | '接待交際費'
+  | '通信費'
+  | '駐車場代'
   | 'その他';
 
 // 出退勤
@@ -94,11 +97,10 @@ export interface AttendanceLog {
 // 日報
 export interface Report {
   id: string;
-  project_id: string;
+  user_id: string;
   report_date: string;
+  title?: string;
   content: string;
-  photo_urls?: string[];
-  created_by: string;
   created_at: string;
 }
 

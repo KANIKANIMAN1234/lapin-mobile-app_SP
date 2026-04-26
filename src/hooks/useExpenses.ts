@@ -11,7 +11,7 @@ const DEMO_EXPENSES: Expense[] = [
     project_number: '2026-001',
     customer_name: '田中一郎',
     amount: 12500,
-    date: '2026-04-25',
+    expense_date: '2026-04-25',
     category: '材料費',
     memo: 'ペンキ・刷毛',
     user_id: 'demo-user-001',
@@ -24,7 +24,7 @@ const DEMO_EXPENSES: Expense[] = [
     project_number: '2026-002',
     customer_name: '鈴木花子',
     amount: 3200,
-    date: '2026-04-24',
+    expense_date: '2026-04-24',
     category: '交通費',
     memo: '現場往復交通費',
     user_id: 'demo-user-001',
@@ -33,10 +33,9 @@ const DEMO_EXPENSES: Expense[] = [
   },
   {
     id: '3',
-    project_number: undefined,
     amount: 8800,
-    date: '2026-04-22',
-    category: '飲食費',
+    expense_date: '2026-04-22',
+    category: '接待交際費',
     memo: '打ち合わせ昼食代',
     user_id: 'demo-user-001',
     user_name: '山田太郎',
@@ -48,7 +47,7 @@ const DEMO_EXPENSES: Expense[] = [
     project_number: '2026-001',
     customer_name: '田中一郎',
     amount: 45000,
-    date: '2026-04-20',
+    expense_date: '2026-04-20',
     category: '外注費',
     memo: '足場設置費用',
     user_id: 'demo-user-001',
@@ -57,9 +56,8 @@ const DEMO_EXPENSES: Expense[] = [
   },
   {
     id: '5',
-    project_number: undefined,
     amount: 2100,
-    date: '2026-04-18',
+    expense_date: '2026-04-18',
     category: '消耗品費',
     memo: '事務用品',
     user_id: 'demo-user-001',
@@ -76,8 +74,8 @@ export function useExpenses(userId?: string) {
     queryFn: async () => {
       try {
         let query = supabase
-          .from('expenses')
-          .select('*, projects(project_number, customer_name)')
+          .from('t_expenses')
+          .select('*, t_projects(project_number, customer_name)')
           .order('date', { ascending: false });
 
         if (userId) {
@@ -101,9 +99,9 @@ export function useCreateExpense() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (expense: Omit<Expense, 'id' | 'created_at'>) => {
+    mutationFn: async (expense: Omit<Expense, 'id' | 'created_at' | 'project_number' | 'customer_name' | 'user_name'>) => {
       const { data, error } = await supabase
-        .from('expenses')
+        .from('t_expenses')
         .insert(expense)
         .select()
         .single();

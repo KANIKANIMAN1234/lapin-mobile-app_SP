@@ -67,10 +67,10 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
         // Supabase から直接ユーザー取得
         const supabase = createClient();
         const { data: dbUser } = await supabase
-          .from('users')
+          .from('m_users')
           .select('*')
           .eq('line_user_id', profile.userId)
-          .eq('is_active', true)
+          .eq('status', 'active')
           .single();
 
         if (dbUser) {

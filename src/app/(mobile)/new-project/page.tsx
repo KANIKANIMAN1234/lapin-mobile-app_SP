@@ -142,7 +142,7 @@ export default function NewProjectPage() {
     setLoading(true);
     try {
       const supabase = createClient();
-      await supabase.from('projects').insert({
+      await supabase.from('t_projects').insert({
         customer_name: modalData.customerName,
         postal_code: modalData.zip,
         address: modalData.address,

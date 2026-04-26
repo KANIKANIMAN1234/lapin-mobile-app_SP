@@ -9,7 +9,7 @@ import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { useToast } from '@/hooks/useToast';
 import type { AiCandidate, ExpenseCategory } from '@/types';
 
-const CATEGORIES: ExpenseCategory[] = ['材料費', '交通費', '外注費', '消耗品費', '飲食費', 'その他'];
+const CATEGORIES: ExpenseCategory[] = ['材料費', '交通費', '外注費', '消耗品費', '接待交際費', '通信費', '駐車場代', 'その他'];
 
 const today = () => new Date().toISOString().split('T')[0];
 
@@ -34,7 +34,7 @@ export default function ExpensePage() {
   const [loadingMsg, setLoadingMsg] = useState('');
 
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(today());
+  const [expenseDate, setExpenseDate] = useState(today());
   const [category, setCategory] = useState<ExpenseCategory>('材料費');
   const [memo, setMemo] = useState('');
   const [projectId, setProjectId] = useState('');
@@ -108,15 +108,16 @@ export default function ExpensePage() {
       await createExpense.mutateAsync({
         project_id: projectId || undefined,
         amount: Number(amount),
-        date,
+        expense_date: expenseDate,
         category,
         memo,
         user_id: user?.id ?? 'demo-user-001',
+        status: 'pending',
       });
       showToast('経費を登録しました', 'success');
       // フォームリセット
       setAmount('');
-      setDate(today());
+      setExpenseDate(today());
       setCategory('材料費');
       setMemo('');
       setProjectId('');
@@ -128,7 +129,7 @@ export default function ExpensePage() {
       // デモモードでも成功扱い
       showToast('経費を登録しました（デモ）', 'success');
       setAmount('');
-      setDate(today());
+      setExpenseDate(today());
       setMemo('');
       setProjectId('');
       setPreviewImages([]);
@@ -291,8 +292,8 @@ export default function ExpensePage() {
           <label>日付</label>
           <input
             type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
+            value={expenseDate}
+            onChange={(e) => setExpenseDate(e.target.value)}
           />
         </div>
 

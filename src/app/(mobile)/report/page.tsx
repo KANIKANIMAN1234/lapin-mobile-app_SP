@@ -33,6 +33,7 @@ export default function ReportPage() {
 
   const [date, setDate] = useState(today());
   const [projectId, setProjectId] = useState('');
+  const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [voiceStatus, setVoiceStatus] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -118,10 +119,6 @@ export default function ReportPage() {
   };
 
   const handleSubmit = async () => {
-    if (!projectId) {
-      showToast('案件を選択してください', 'error');
-      return;
-    }
     if (!content.trim()) {
       showToast('報告内容を入力してください', 'error');
       return;
@@ -130,11 +127,11 @@ export default function ReportPage() {
     setLoading(true);
     try {
       const supabase = createClient();
-      await supabase.from('reports').insert({
-        project_id: projectId,
+      await supabase.from('t_reports').insert({
+        user_id: user?.id ?? 'demo-user-001',
         report_date: date,
+        title: title || `${date} 日報`,
         content,
-        created_by: user?.id ?? 'demo-user-001',
       });
       showToast('日報を送信しました', 'success');
     } catch {
@@ -142,6 +139,7 @@ export default function ReportPage() {
     } finally {
       setLoading(false);
       setProjectId('');
+      setTitle('');
       setContent('');
       setDate(today());
       setPhotoUrls([]);
@@ -165,9 +163,19 @@ export default function ReportPage() {
         </div>
 
         <div className="form-field">
-          <label>案件 *</label>
+          <label>タイトル（省略可）</label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={`${date} 日報`}
+          />
+        </div>
+
+        <div className="form-field">
+          <label>関連案件（参考）</label>
           <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            <option value="">案件を選択</option>
+            <option value="">案件を選択（任意）</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.project_number} {p.customer_name}

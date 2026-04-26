@@ -21,8 +21,8 @@ export default function HistoryPage() {
     return expenses.filter((e) => {
       if (filterProject && e.project_id !== filterProject) return false;
       if (filterCategory && e.category !== filterCategory) return false;
-      if (filterYear && !e.date.startsWith(filterYear)) return false;
-      if (filterMonth && e.date.split('-')[1] !== filterMonth.padStart(2, '0')) return false;
+      if (filterYear && !e.expense_date.startsWith(filterYear)) return false;
+      if (filterMonth && e.expense_date.split('-')[1] !== filterMonth.padStart(2, '0')) return false;
       return true;
     });
   }, [expenses, filterProject, filterCategory, filterYear, filterMonth]);
@@ -109,17 +109,17 @@ export default function HistoryPage() {
                   </p>
                 )}
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {expense.category} · {expense.date} · {expense.user_name}
+                  {expense.category} · {expense.expense_date} · {expense.user_name}
                 </p>
               </div>
               <div className="flex flex-col items-end shrink-0 ml-2">
                 <p className="font-bold text-base" style={{ color: 'var(--red)' }}>
                   ¥{expense.amount.toLocaleString()}
                 </p>
-                {expense.receipt_url && (
+                {expense.receipt_image_url && (
                   <button
                     className="text-xs text-blue-500 flex items-center gap-0.5 mt-1"
-                    onClick={() => window.open(expense.receipt_url, '_blank')}
+                    onClick={() => window.open(expense.receipt_image_url, '_blank')}
                   >
                     <span className="material-icons text-xs">image</span>
                     領収書

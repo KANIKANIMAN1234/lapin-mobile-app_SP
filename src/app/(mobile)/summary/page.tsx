@@ -22,8 +22,8 @@ export default function SummaryPage() {
   const filtered = useMemo(() => {
     return expenses.filter((e) => {
       if (filterProject && e.project_id !== filterProject) return false;
-      if (filterYear && !e.date.startsWith(filterYear)) return false;
-      if (filterMonth && e.date.split('-')[1] !== filterMonth.padStart(2, '0')) return false;
+      if (filterYear && !e.expense_date.startsWith(filterYear)) return false;
+      if (filterMonth && e.expense_date.split('-')[1] !== filterMonth.padStart(2, '0')) return false;
       return true;
     });
   }, [expenses, filterProject, filterYear, filterMonth]);
