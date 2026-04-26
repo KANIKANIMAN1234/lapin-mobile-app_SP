@@ -1,0 +1,149 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --line-green: #06C755;
+  --line-green-dark: #05a948;
+  --line-green-light: #e6f9ee;
+  --blue: #3b82f6;
+  --red: #ef4444;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  overflow-x: hidden;
+  background-color: var(--gray-50);
+  font-family: -apple-system, 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', sans-serif;
+}
+
+/* フォームカード */
+.form-card {
+  @apply bg-white rounded-2xl shadow-sm p-4 mb-4;
+}
+
+/* セクションタイトル */
+.section-title {
+  @apply flex items-center gap-2 font-bold text-gray-800 mb-3 text-base;
+}
+
+/* ボタン共通 */
+.btn-submit {
+  @apply w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 text-base;
+  background-color: var(--line-green);
+  transition: background-color 0.2s;
+}
+.btn-submit:hover {
+  background-color: var(--line-green-dark);
+}
+.btn-submit:disabled {
+  @apply opacity-60 cursor-not-allowed;
+}
+
+.btn-sub {
+  @apply flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium;
+  background-color: #374151;
+}
+
+.btn-line-action {
+  @apply w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 text-base;
+  background-color: var(--line-green);
+  transition: background-color 0.2s;
+}
+.btn-line-action:hover {
+  background-color: var(--line-green-dark);
+}
+
+.btn-format {
+  @apply flex items-center gap-1.5 px-3 py-2 rounded-lg text-gray-700 text-sm bg-white border border-gray-200;
+}
+
+/* フォームフィールド */
+.form-field {
+  @apply flex flex-col gap-1 mb-3;
+}
+.form-field label {
+  @apply text-xs font-semibold text-gray-600;
+}
+.form-field input,
+.form-field select,
+.form-field textarea {
+  @apply w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-line-green focus:ring-1 focus:ring-line-green;
+  transition: border-color 0.2s;
+}
+.form-field textarea {
+  @apply resize-none;
+}
+
+/* 出退勤ボタン */
+.attendance-btn {
+  @apply flex flex-col items-center justify-center rounded-full font-bold text-white;
+  width: 130px;
+  height: 130px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+.attendance-btn:active {
+  transform: scale(0.95);
+}
+.attendance-btn:disabled {
+  @apply opacity-50 cursor-not-allowed;
+}
+.btn-clockin {
+  background-color: var(--line-green);
+}
+.btn-clockout {
+  background-color: var(--red);
+}
+
+/* 音声入力ボタン */
+.voice-btn {
+  @apply flex items-center justify-center rounded-full;
+  width: 40px;
+  height: 40px;
+  background-color: #9ca3af;
+  transition: background-color 0.2s;
+}
+.voice-btn.recording {
+  background-color: var(--red);
+  animation: pulse-voice 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse-voice {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+/* プレビューグリッド */
+.preview-container {
+  @apply flex gap-2 flex-wrap mt-2;
+}
+.preview-item {
+  @apply relative rounded-lg overflow-hidden;
+  width: calc(33.33% - 6px);
+  height: 80px;
+}
+.preview-item img {
+  @apply w-full h-full object-cover;
+}
+.preview-item .remove-btn {
+  @apply absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center;
+}
+
+/* スクロールバー非表示 */
+::-webkit-scrollbar {
+  display: none;
+}

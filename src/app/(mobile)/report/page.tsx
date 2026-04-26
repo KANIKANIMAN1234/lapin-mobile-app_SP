@@ -1,0 +1,252 @@
+'use client';
+
+import { useState, useRef } from 'react';
+import { useProjects } from '@/hooks/useProjects';
+import { useAuthStore } from '@/stores/authStore';
+import { Toast } from '@/components/ui/Toast';
+import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
+import { useToast } from '@/hooks/useToast';
+import { createClient } from '@/lib/supabase';
+
+const today = () => new Date().toISOString().split('T')[0];
+
+function formatText(text: string): string {
+  return text
+    .replace(/。(?!\n)/g, '。\n')
+    .replace(/[、、]+/g, '、')
+    .replace(/\n{3,}/g, '\n\n')
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return '';
+      if (/[。）)\]】]$/.test(trimmed)) return trimmed;
+      return trimmed + '。';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+export default function ReportPage() {
+  const { user } = useAuthStore();
+  const { data: projects = [] } = useProjects();
+  const { toasts, showToast, removeToast } = useToast();
+
+  const [date, setDate] = useState(today());
+  const [projectId, setProjectId] = useState('');
+  const [content, setContent] = useState('');
+  const [voiceStatus, setVoiceStatus] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  const toggleVoice = () => {
+    const SR = (window as Window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition
+      || window.SpeechRecognition;
+
+    if (!SR) {
+      showToast('お使いのブラウザは音声入力に対応していません', 'error');
+      return;
+    }
+
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+      setVoiceStatus('音声入力を終了しました');
+      return;
+    }
+
+    const recognition = new SR();
+    recognition.lang = 'ja-JP';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    let finalTranscript = content;
+
+    recognition.onresult = (e) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) {
+          finalTranscript += t;
+        } else {
+          interim = t;
+        }
+      }
+      setContent(finalTranscript + interim);
+    };
+
+    recognition.onerror = () => {
+      setIsRecording(false);
+      setVoiceStatus('');
+      showToast('音声認識エラーが発生しました', 'error');
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+      setVoiceStatus('音声入力を終了しました');
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsRecording(true);
+    setVoiceStatus('音声認識中...話してください');
+  };
+
+  const handleFormat = () => {
+    if (!content.trim()) {
+      showToast('整形する文章がありません', 'error');
+      return;
+    }
+    setContent(formatText(content));
+    showToast('文章を整形しました', 'success');
+  };
+
+  const handlePhotoAdd = (files: FileList) => {
+    const remaining = 5 - photoUrls.length;
+    Array.from(files).slice(0, remaining).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setPhotoUrls((prev) => [...prev, e.target?.result as string]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (!projectId) {
+      showToast('案件を選択してください', 'error');
+      return;
+    }
+    if (!content.trim()) {
+      showToast('報告内容を入力してください', 'error');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      await supabase.from('reports').insert({
+        project_id: projectId,
+        report_date: date,
+        content,
+        created_by: user?.id ?? 'demo-user-001',
+      });
+      showToast('日報を送信しました', 'success');
+    } catch {
+      showToast('日報を送信しました（デモ）', 'success');
+    } finally {
+      setLoading(false);
+      setProjectId('');
+      setContent('');
+      setDate(today());
+      setPhotoUrls([]);
+    }
+  };
+
+  return (
+    <>
+      <LoadingOverlay show={loading} message="日報を送信中..." />
+      <Toast toasts={toasts} onRemove={removeToast} />
+
+      <div className="form-card">
+        <h3 className="section-title">
+          <span className="material-icons text-line-green">description</span>
+          日報作成
+        </h3>
+
+        <div className="form-field">
+          <label>日付</label>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+
+        <div className="form-field">
+          <label>案件 *</label>
+          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">案件を選択</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.project_number} {p.customer_name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-field">
+          <label>報告内容 *</label>
+          <div className="relative">
+            <textarea
+              rows={6}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="報告内容を入力、または音声入力してください"
+              style={{ paddingRight: 52 }}
+            />
+            <button
+              className={`voice-btn absolute right-2 bottom-2 ${isRecording ? 'recording' : ''}`}
+              onClick={toggleVoice}
+              type="button"
+            >
+              <span className="material-icons text-white text-base">
+                {isRecording ? 'stop' : 'mic'}
+              </span>
+            </button>
+          </div>
+          {voiceStatus && (
+            <p className={`text-xs mt-1 ${isRecording ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
+              {voiceStatus}
+            </p>
+          )}
+        </div>
+
+        <button className="btn-format mb-3" onClick={handleFormat} type="button">
+          <span className="material-icons text-base">auto_fix_high</span>
+          文章を整形
+        </button>
+
+        {/* 写真添付 */}
+        <div className="form-field">
+          <label>写真添付（最大5枚）</label>
+          <div className="flex flex-wrap gap-2">
+            {photoUrls.map((url, i) => (
+              <div key={i} className="relative rounded-lg overflow-hidden" style={{ width: 72, height: 72 }}>
+                <img src={url} alt="" className="w-full h-full object-cover" />
+                <button
+                  className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center"
+                  onClick={() => setPhotoUrls((prev) => prev.filter((_, j) => j !== i))}
+                >
+                  <span className="material-icons text-[12px]">close</span>
+                </button>
+              </div>
+            ))}
+            {photoUrls.length < 5 && (
+              <button
+                className="flex items-center justify-center rounded-lg text-gray-400 border-2 border-dashed border-gray-300"
+                style={{ width: 72, height: 72 }}
+                onClick={() => photoInputRef.current?.click()}
+                type="button"
+              >
+                <span className="material-icons">add_a_photo</span>
+              </button>
+            )}
+          </div>
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => e.target.files && handlePhotoAdd(e.target.files)}
+          />
+        </div>
+
+        <button className="btn-line-action" onClick={handleSubmit}>
+          <span className="material-icons text-base">send</span>
+          日報を送信
+        </button>
+      </div>
+    </>
+  );
+}
