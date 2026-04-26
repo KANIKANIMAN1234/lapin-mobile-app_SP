@@ -53,7 +53,8 @@ export default function SitePhotoPage() {
   const [loading, setLoading] = useState(false);
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
 
   const handleProjectChange = (id: string) => {
     setProjectId(id);
@@ -80,8 +81,8 @@ export default function SitePhotoPage() {
   };
 
   const toggleVoice = () => {
-    const SR = (window as Window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition
-      || window.SpeechRecognition;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR: any = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
 
     if (!SR) {
       showToast('お使いのブラウザは音声入力に対応していません', 'error');

@@ -87,8 +87,8 @@ export default function NewProjectPage() {
     field: 'workDesc' | 'memo',
     setRecording: (v: boolean) => void
   ) => {
-    const SR = (window as Window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition
-      || window.SpeechRecognition;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR: any = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
     if (!SR) { showToast('音声入力に非対応のブラウザです', 'error'); return; }
 
     const recognition = new SR();
