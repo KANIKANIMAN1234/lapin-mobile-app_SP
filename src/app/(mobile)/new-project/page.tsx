@@ -97,7 +97,8 @@ export default function NewProjectPage() {
     recognition.interimResults = true;
 
     let finalText = form[field];
-    recognition.onresult = (e) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (e: any) => {
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
