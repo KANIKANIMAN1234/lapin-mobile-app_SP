@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -36,9 +37,15 @@ export default function RootLayout({
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800&display=swap"
         />
-        <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" async />
       </head>
-      <body>{children}</body>
+      <body>
+        {/* LIFF SDK: afterInteractive で確実に読み込み */}
+        <Script
+          src="https://static.line-scdn.net/liff/edge/2/sdk.js"
+          strategy="afterInteractive"
+        />
+        {children}
+      </body>
     </html>
   );
 }
