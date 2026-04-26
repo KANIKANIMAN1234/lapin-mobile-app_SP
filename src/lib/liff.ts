@@ -97,4 +97,16 @@ export function getLiffIdToken(): string | null {
   return window.liff.getIDToken();
 }
 
+/** LINEログイン後のリダイレクト戻りかどうかを判定 */
+export function isReturnFromLineAuth(): boolean {
+  if (typeof window === 'undefined') return false;
+  const search = window.location.search;
+  const hash = window.location.hash;
+  return (
+    search.includes('code=') ||
+    search.includes('liff.state') ||
+    hash.includes('access_token')
+  );
+}
+
 export const IS_DEMO_MODE = !LIFF_ID;
