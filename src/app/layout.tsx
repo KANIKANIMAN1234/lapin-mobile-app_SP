@@ -5,6 +5,12 @@ export const metadata: Metadata = {
   title: 'ラパンリフォーム Mobile',
   description: 'ラパンリフォーム業務管理モバイルアプリ',
   manifest: '/manifest.json',
+  icons: {
+    icon: [
+      { url: '/favicon.png', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
