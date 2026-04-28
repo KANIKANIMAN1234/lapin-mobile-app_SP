@@ -24,7 +24,8 @@ export function BottomNav() {
   const pathname = usePathname();
   const { user } = useAuthStore();
 
-  const canRegister = user?.can_register_project || user?.role === 'admin';
+  // m_users.can_register_project が true のユーザーのみ「新規登録」タブを表示（仕様: 社長のみ）
+  const canRegister = user?.can_register_project === true;
   const items = canRegister ? [...NAV_ITEMS, REGISTER_ITEM] : NAV_ITEMS;
 
   return (

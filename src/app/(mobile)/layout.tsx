@@ -26,7 +26,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         // m_users から詳細情報を取得
         const { data: userData } = await supabase
           .from('m_users')
-          .select('id, name, role, email, phone, avatar_url, status, line_user_id')
+          .select('id, name, role, email, phone, avatar_url, status, line_user_id, can_register_project')
           .eq('id', authUser.id)
           .single();
 
@@ -40,8 +40,8 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
             avatar_url: userData.avatar_url ?? undefined,
             line_user_id: userData.line_user_id ?? undefined,
             status: userData.status as 'active' | 'retired',
-            can_register_project:
-              userData.role === 'admin' || userData.role === 'staff',
+            // DB の can_register_project を優先。列が未追加の場合は role=admin をフォールバックに使用
+            can_register_project: userData.can_register_project ?? (userData.role === 'admin'),
           });
         } else {
           // m_users にいない場合は auth.user_metadata から補完
@@ -53,7 +53,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
               role: (meta.role ?? 'sales') as UserRole,
               email: authUser.email ?? '',
               status: 'active',
-              can_register_project: meta.role === 'admin' || meta.role === 'staff',
+              can_register_project: meta.role === 'admin',
             });
           } else {
             router.replace('/');
