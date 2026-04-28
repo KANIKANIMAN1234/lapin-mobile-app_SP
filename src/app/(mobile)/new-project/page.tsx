@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { Toast } from '@/components/ui/Toast';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
@@ -21,13 +21,14 @@ function todayStr() {
 }
 
 function formatText(text: string): string {
-  return text
-    .replace(/。(?!\n)/g, '。\n')
-    .replace(/[、、]+/g, '、')
+  let result = text.trim();
+  // 句点・感嘆符・疑問符の後に改行を挿入
+  result = result.replace(/([。！？])\s*/g, '$1\n');
+  return result
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => (/[。）)\]】]$/.test(line) ? line : line + '。'))
+    .map((line) => (/[。！？」）\]】]$/.test(line) ? line : line + '。'))
     .join('\n');
 }
 
@@ -82,7 +83,10 @@ export default function NewProjectPage() {
   const [showModal, setShowModal] = useState(false);
   const [modalData, setModalData] = useState<ModalData | null>(null);
   const [isRecordingDesc, setIsRecordingDesc] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
 
   // 従業員一覧をSupabaseから取得
   useEffect(() => {
@@ -119,35 +123,58 @@ export default function NewProjectPage() {
     }));
   };
 
-  const startVoice = useCallback(
-    (field: 'workDesc', setRecording: (v: boolean) => void) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const SR: any = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-      if (!SR) { showToast('音声入力に非対応のブラウザです', 'error'); return; }
+  const handleVoiceToggle = () => {
+    // 録音中 → 停止
+    if (isRecordingDesc) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
+      setIsRecordingDesc(false);
+      setVoiceStatus('');
+      return;
+    }
 
-      const recognition = new SR();
-      recognition.lang = 'ja-JP';
-      recognition.continuous = true;
-      recognition.interimResults = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR: any = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    if (!SR) { showToast('お使いのブラウザは音声入力に対応していません', 'error'); return; }
 
-      let finalText = form[field];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      recognition.onresult = (e: any) => {
-        let interim = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const t = e.results[i][0].transcript;
-          if (e.results[i].isFinal) finalText += t;
-          else interim = t;
-        }
-        update(field, finalText + interim);
-      };
-      recognition.onerror = () => { setRecording(false); };
-      recognition.onend = () => { setRecording(false); };
-      recognition.start();
-      setRecording(true);
-    },
-    [form, showToast],
-  );
+    const recognition = new SR();
+    recognition.lang = 'ja-JP';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    // クロージャ問題を避けるため finalText をローカル変数で管理
+    // 初期値は現在のフォーム値のスナップショット
+    let finalText = form.workDesc;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (e: any) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalText += t;
+        else interim = t;
+      }
+      // setForm の関数アップデート形式で直接更新（stale closure を回避）
+      setForm((prev) => ({ ...prev, workDesc: finalText + interim }));
+    };
+    recognition.onerror = () => {
+      setIsRecordingDesc(false);
+      setVoiceStatus('');
+      recognitionRef.current = null;
+    };
+    recognition.onend = () => {
+      setIsRecordingDesc(false);
+      setVoiceStatus('');
+      recognitionRef.current = null;
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsRecordingDesc(true);
+    setVoiceStatus('録音中... 停止ボタンで確定');
+  };
 
   const validate = (): boolean => {
     if (!form.customerName) { showToast('顧客名を入力してください', 'error'); return false; }
@@ -417,7 +444,7 @@ export default function NewProjectPage() {
                 isRecordingDesc ? 'bg-red-500 animate-pulse' : 'bg-gray-400'
               }`}
               style={{ width: 32, height: 32 }}
-              onClick={() => startVoice('workDesc', setIsRecordingDesc)}
+              onClick={handleVoiceToggle}
               type="button"
             >
               <span className="material-icons text-white text-sm">
@@ -425,6 +452,11 @@ export default function NewProjectPage() {
               </span>
             </button>
           </div>
+          {voiceStatus && (
+            <p className={`text-[10px] mt-0.5 ${isRecordingDesc ? 'text-red-500 font-semibold' : 'text-gray-500'}`}>
+              {voiceStatus}
+            </p>
+          )}
           <button
             className="btn-format mt-2"
             onClick={() => {
