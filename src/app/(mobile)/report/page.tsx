@@ -10,20 +10,15 @@ import { createClient } from '@/lib/supabase';
 
 const today = () => new Date().toISOString().split('T')[0];
 
-function formatText(text: string): string {
-  return text
-    .replace(/。(?!\n)/g, '。\n')
-    .replace(/[、、]+/g, '、')
-    .replace(/\n{3,}/g, '\n\n')
-    .split('\n')
-    .map((line) => {
-      const trimmed = line.trim();
-      if (!trimmed) return '';
-      if (/[。）)\]】]$/.test(trimmed)) return trimmed;
-      return trimmed + '。';
-    })
-    .filter(Boolean)
-    .join('\n');
+async function callFormatText(text: string, promptKey: string): Promise<string> {
+  const res = await fetch('/api/format-text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input_text: text, prompt_key: promptKey }),
+  });
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error ?? 'AI整形に失敗しました');
+  return json.data?.formatted_text ?? text;
 }
 
 export default function ReportPage() {
@@ -37,6 +32,7 @@ export default function ReportPage() {
   const [content, setContent] = useState('');
   const [voiceStatus, setVoiceStatus] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [formatting, setFormatting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
 
@@ -98,13 +94,20 @@ export default function ReportPage() {
     setVoiceStatus('音声認識中...話してください');
   };
 
-  const handleFormat = () => {
+  const handleFormat = async () => {
     if (!content.trim()) {
       showToast('整形する文章がありません', 'error');
       return;
     }
-    setContent(formatText(content));
-    showToast('文章を整形しました', 'success');
+    setFormatting(true);
+    try {
+      const result = await callFormatText(content, 'daily_report');
+      setContent(result);
+      showToast('AI整形しました', 'success');
+    } catch {
+      showToast('AI整形に失敗しました', 'error');
+    }
+    setFormatting(false);
   };
 
   const handlePhotoAdd = (files: FileList) => {
@@ -211,9 +214,9 @@ export default function ReportPage() {
           )}
         </div>
 
-        <button className="btn-format mb-3" onClick={handleFormat} type="button">
-          <span className="material-icons text-base">auto_fix_high</span>
-          文章を整形
+        <button className="btn-format mb-3" onClick={handleFormat} type="button" disabled={formatting}>
+          <span className="material-icons text-base text-purple-500">auto_fix_high</span>
+          {formatting ? 'AI整形中...' : 'AI整形'}
         </button>
 
         {/* 写真添付 */}

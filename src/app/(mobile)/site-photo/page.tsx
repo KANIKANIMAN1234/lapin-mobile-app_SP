@@ -25,15 +25,15 @@ const WORK_TYPES_MAP: Record<string, string[]> = {
 
 const today = () => new Date().toISOString().split('T')[0];
 
-function formatText(text: string): string {
-  return text
-    .replace(/。(?!\n)/g, '。\n')
-    .replace(/[、、]+/g, '、')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => (/[。）)\]】]$/.test(line) ? line : line + '。'))
-    .join('\n');
+async function callFormatText(text: string, promptKey: string): Promise<string> {
+  const res = await fetch('/api/format-text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input_text: text, prompt_key: promptKey }),
+  });
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error ?? 'AI整形に失敗しました');
+  return json.data?.formatted_text ?? text;
 }
 
 export default function SitePhotoPage() {
@@ -50,6 +50,7 @@ export default function SitePhotoPage() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('');
+  const [formatting, setFormatting] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -233,15 +234,23 @@ export default function SitePhotoPage() {
 
         <button
           className="btn-format mb-4"
-          onClick={() => {
+          onClick={async () => {
             if (!memo.trim()) { showToast('整形する文章がありません', 'error'); return; }
-            setMemo(formatText(memo));
-            showToast('文章を整形しました', 'success');
+            setFormatting(true);
+            try {
+              const result = await callFormatText(memo, 'site_photo');
+              setMemo(result);
+              showToast('AI整形しました', 'success');
+            } catch {
+              showToast('AI整形に失敗しました', 'error');
+            }
+            setFormatting(false);
           }}
           type="button"
+          disabled={formatting}
         >
-          <span className="material-icons text-base">auto_fix_high</span>
-          文章を整形
+          <span className="material-icons text-base text-purple-500">auto_fix_high</span>
+          {formatting ? 'AI整形中...' : 'AI整形'}
         </button>
 
         {/* アップロードエリア */}
