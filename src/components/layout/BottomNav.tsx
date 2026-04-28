@@ -20,13 +20,25 @@ const REGISTER_ITEM = {
   color: 'text-blue-500',
 };
 
+const NOTICE_ITEM = {
+  href: '/notice',
+  icon: 'campaign',
+  label: '連絡投稿',
+  color: 'text-orange-500',
+};
+
 export function BottomNav() {
   const pathname = usePathname();
   const { user } = useAuthStore();
 
-  // m_users.can_register_project が true のユーザーのみ「新規登録」タブを表示（仕様: 社長のみ）
+  const isAdmin = user?.role === 'admin';
   const canRegister = user?.can_register_project === true;
-  const items = canRegister ? [...NAV_ITEMS, REGISTER_ITEM] : NAV_ITEMS;
+
+  const items = [
+    ...NAV_ITEMS,
+    ...(canRegister ? [REGISTER_ITEM] : []),
+    ...(isAdmin ? [NOTICE_ITEM] : []),
+  ];
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-[100] bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.08)] h-[60px]">
