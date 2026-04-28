@@ -116,15 +116,26 @@ export default function NoticePage() {
         (form.title.trim() ? `件名: ${form.title.trim()}\n` : '') +
         `---\n${form.body.trim()}`;
 
-      fetch('/api/line-broadcast', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: lineMsg }),
-      }).catch((e) => console.error('[NoticePage] line-broadcast error:', e));
+      try {
+        const broadcastRes = await fetch('/api/line-broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: lineMsg }),
+        });
+        const broadcastJson = await broadcastRes.json();
+        console.log('[NoticePage] line-broadcast result:', broadcastJson);
+        if (!broadcastRes.ok || !broadcastJson.success) {
+          showToast(`投稿しました（LINE通知失敗: ${broadcastJson.error ?? broadcastRes.status}）`, 'error');
+        } else {
+          showToast(`投稿し、LINE通知しました（${broadcastJson.sent}件）`, 'success');
+        }
+      } catch (broadcastErr) {
+        console.error('[NoticePage] line-broadcast fetch error:', broadcastErr);
+        showToast('投稿しました（LINE通知に失敗しました）', 'error');
+      }
 
       setForm({ title: '', body: '', category: 'general', is_pinned: false });
       setShowForm(false);
-      showToast('投稿し、LINEに通知しました', 'success');
       await fetchNotices();
     } catch (e) {
       console.error('[NoticePage] submit error:', e);
