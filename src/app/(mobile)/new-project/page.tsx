@@ -202,7 +202,7 @@ export default function NewProjectPage() {
     try {
       const supabase = createClient();
 
-      // ── 案件をDBに登録 ─────────────────────────────────────
+      // ── 案件をDBに登録（project_numberはオプション扱い）──────
       const { data: insertedData, error: insertError } = await supabase
         .from('t_projects')
         .insert({
@@ -222,7 +222,7 @@ export default function NewProjectPage() {
           inquiry_date: modalData.inquiryDate,
           created_by: user?.id ?? 'demo-user-001',
         })
-        .select('id, project_number')
+        .select('id')
         .single();
 
       if (insertError) throw insertError;
@@ -231,27 +231,45 @@ export default function NewProjectPage() {
       const assignedEmployee = employees.find((e) => e.id === modalData.assigned);
       const adminEmployees = employees.filter((e) => e.role === 'admin' && e.line_user_id);
 
-      fetch('/api/line-notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectNumber: (insertedData as { project_number?: string })?.project_number ?? undefined,
-          customerName: modalData.customerName,
-          address: modalData.address,
-          workDescription: modalData.workDesc || undefined,
-          workType: modalData.workTypes,
-          estimatedAmount: Number(modalData.amount),
-          acquisitionRoute: modalData.route,
-          inquiryDate: modalData.inquiryDate,
-          assignedUserName: assignedEmployee?.name ?? undefined,
-          assignedLineUserId: assignedEmployee?.line_user_id ?? undefined,
-          adminLineUserIds: adminEmployees.map((e) => e.line_user_id!),
-        }),
-      }).catch((e) => console.error('[new-project] line-notify fetch error:', e));
+      console.log('[new-project] line-notify payload:', {
+        customerName: modalData.customerName,
+        assignedEmployee: assignedEmployee?.name,
+        assignedLineUserId: assignedEmployee?.line_user_id,
+        adminCount: adminEmployees.length,
+        insertedId: (insertedData as { id?: string })?.id,
+      });
 
-      showToast('案件を登録し、LINEに通知しました', 'success');
-    } catch {
-      showToast('案件を登録しました（デモ）', 'success');
+      try {
+        const notifyRes = await fetch('/api/line-notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerName: modalData.customerName,
+            address: modalData.address,
+            workDescription: modalData.workDesc || undefined,
+            workType: modalData.workTypes,
+            estimatedAmount: Number(modalData.amount),
+            acquisitionRoute: modalData.route,
+            inquiryDate: modalData.inquiryDate,
+            assignedUserName: assignedEmployee?.name ?? undefined,
+            assignedLineUserId: assignedEmployee?.line_user_id ?? undefined,
+            adminLineUserIds: adminEmployees.map((e) => e.line_user_id!),
+          }),
+        });
+        const notifyJson = await notifyRes.json();
+        console.log('[new-project] line-notify result:', notifyJson);
+        if (!notifyRes.ok || !notifyJson.success) {
+          showToast('案件を登録しました（LINE通知に失敗: ' + (notifyJson.error ?? notifyRes.status) + '）', 'error');
+        } else {
+          showToast('案件を登録し、LINEに通知しました', 'success');
+        }
+      } catch (notifyErr) {
+        console.error('[new-project] line-notify fetch error:', notifyErr);
+        showToast('案件を登録しました（LINE通知に失敗しました）', 'error');
+      }
+    } catch (err) {
+      console.error('[new-project] insert error:', err);
+      showToast('案件の登録に失敗しました', 'error');
     } finally {
       setLoading(false);
       setShowModal(false);
