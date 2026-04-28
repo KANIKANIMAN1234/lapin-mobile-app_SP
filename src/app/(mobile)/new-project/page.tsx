@@ -20,16 +20,15 @@ function todayStr() {
   return new Date().toISOString().split('T')[0];
 }
 
-function formatText(text: string): string {
-  let result = text.trim();
-  // 句点・感嘆符・疑問符の後に改行を挿入
-  result = result.replace(/([。！？])\s*/g, '$1\n');
-  return result
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => (/[。！？」）\]】]$/.test(line) ? line : line + '。'))
-    .join('\n');
+async function callFormatText(text: string, promptKey: string): Promise<string> {
+  const res = await fetch('/api/format-text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input_text: text, prompt_key: promptKey }),
+  });
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error ?? 'AI整形に失敗しました');
+  return json.data?.formatted_text ?? text;
 }
 
 interface Employee {
@@ -84,6 +83,7 @@ export default function NewProjectPage() {
   const [modalData, setModalData] = useState<ModalData | null>(null);
   const [isRecordingDesc, setIsRecordingDesc] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('');
+  const [formatting, setFormatting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
@@ -459,15 +459,23 @@ export default function NewProjectPage() {
           )}
           <button
             className="btn-format mt-2"
-            onClick={() => {
+            onClick={async () => {
               if (!form.workDesc.trim()) { showToast('整形する文章がありません', 'error'); return; }
-              update('workDesc', formatText(form.workDesc));
-              showToast('文章を整形しました', 'success');
+              setFormatting(true);
+              try {
+                const result = await callFormatText(form.workDesc, 'admin_project_desc');
+                update('workDesc', result);
+                showToast('AI整形しました', 'success');
+              } catch {
+                showToast('AI整形に失敗しました', 'error');
+              }
+              setFormatting(false);
             }}
             type="button"
+            disabled={formatting}
           >
             <span className="material-icons text-base text-purple-500">auto_fix_high</span>
-            文章を整形する
+            {formatting ? 'AI整形中...' : 'AI整形'}
           </button>
         </div>
 
