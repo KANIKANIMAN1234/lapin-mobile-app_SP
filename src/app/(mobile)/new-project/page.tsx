@@ -35,6 +35,7 @@ interface Employee {
   id: string;
   name: string;
   role: string;
+  line_user_id?: string | null;
 }
 
 interface FormState {
@@ -95,7 +96,7 @@ export default function NewProjectPage() {
         const supabase = createClient();
         const { data, error } = await supabase
           .from('m_users')
-          .select('id, name, role')
+          .select('id, name, role, line_user_id')
           .eq('status', 'active')
           .order('name');
         if (!error && data && data.length > 0) {
@@ -200,23 +201,54 @@ export default function NewProjectPage() {
 
     try {
       const supabase = createClient();
-      await supabase.from('t_projects').insert({
-        customer_name: modalData.customerName,
-        customer_name_kana: modalData.customerNameKana || null,
-        postal_code: modalData.zip || null,
-        address: modalData.address,
-        phone: modalData.phone,
-        email: modalData.email || null,
-        work_description: modalData.workDesc || modalData.workTypes.join(','),
-        work_type: modalData.workTypes,
-        estimated_amount: Number(modalData.amount),
-        acquisition_route: modalData.route,
-        assigned_to: modalData.assigned || null,
-        notes: modalData.memo || null,
-        status: 'inquiry',
-        inquiry_date: modalData.inquiryDate,
-        created_by: user?.id ?? 'demo-user-001',
-      });
+
+      // ── 案件をDBに登録 ─────────────────────────────────────
+      const { data: insertedData, error: insertError } = await supabase
+        .from('t_projects')
+        .insert({
+          customer_name: modalData.customerName,
+          customer_name_kana: modalData.customerNameKana || null,
+          postal_code: modalData.zip || null,
+          address: modalData.address,
+          phone: modalData.phone,
+          email: modalData.email || null,
+          work_description: modalData.workDesc || modalData.workTypes.join(','),
+          work_type: modalData.workTypes,
+          estimated_amount: Number(modalData.amount),
+          acquisition_route: modalData.route,
+          assigned_to: modalData.assigned || null,
+          notes: modalData.memo || null,
+          status: 'inquiry',
+          inquiry_date: modalData.inquiryDate,
+          created_by: user?.id ?? 'demo-user-001',
+        })
+        .select('id, project_number')
+        .single();
+
+      if (insertError) throw insertError;
+
+      // ── LINE通知を送信 ──────────────────────────────────────
+      const assignedEmployee = employees.find((e) => e.id === modalData.assigned);
+      const adminEmployees = employees.filter((e) => e.role === 'admin' && e.line_user_id);
+
+      fetch('/api/line-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectNumber: (insertedData as { project_number?: string })?.project_number ?? undefined,
+          customerName: modalData.customerName,
+          address: modalData.address,
+          workDescription: modalData.workDesc || undefined,
+          workType: modalData.workTypes,
+          estimatedAmount: Number(modalData.amount),
+          acquisitionRoute: modalData.route,
+          inquiryDate: modalData.inquiryDate,
+          assignedUserName: assignedEmployee?.name ?? undefined,
+          assignedLineUserId: assignedEmployee?.line_user_id ?? undefined,
+          adminLineUserIds: adminEmployees.map((e) => e.line_user_id!),
+        }),
+      }).catch((e) => console.error('[new-project] line-notify fetch error:', e));
+
       showToast('案件を登録し、LINEに通知しました', 'success');
     } catch {
       showToast('案件を登録しました（デモ）', 'success');
