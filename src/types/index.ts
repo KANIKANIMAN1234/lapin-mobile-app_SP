@@ -76,17 +76,23 @@ export type ExpenseCategory =
   | 'その他';
 
 // 出退勤
+export type AttendanceStatus = 'none' | 'working' | 'break' | 'left';
+export type AttendanceType = 'clock_in' | 'break_start' | 'break_end' | 'clock_out';
+
 export interface Attendance {
   id: string;
   user_id: string;
   date: string;
   clock_in?: string;
+  break_start?: string;
+  break_end?: string;
   clock_out?: string;
+  total_work_minutes?: number;
+  clock_in_location?: string;
+  clock_out_location?: string;
   created_at: string;
   updated_at: string;
 }
-
-export type AttendanceType = 'clock_in' | 'clock_out';
 
 export interface AttendanceLog {
   time: string;

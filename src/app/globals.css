@@ -105,6 +105,12 @@ html, body {
 .btn-clockin {
   background-color: var(--line-green);
 }
+.btn-break {
+  background-color: #f59e0b;
+}
+.btn-return {
+  background-color: var(--blue);
+}
 .btn-clockout {
   background-color: var(--red);
 }
