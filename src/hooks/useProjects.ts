@@ -104,21 +104,19 @@ export function useProjects() {
   return useQuery<Project[]>({
     queryKey: ['projects'],
     queryFn: async () => {
-      try {
-        const { data, error } = await supabase
-          .from('t_projects')
-          .select('*')
-          .is('deleted_at', null)
-          .order('updated_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('t_projects')
+        .select('*')
+        .is('deleted_at', null)
+        .order('updated_at', { ascending: false });
 
-        if (error) throw error;
-        return (data as Project[]) ?? DEMO_PROJECTS;
-      } catch {
-        return DEMO_PROJECTS;
+      if (error) {
+        console.error('[useProjects] Supabase error:', error);
+        throw error;
       }
+      return (data as Project[]) ?? [];
     },
     staleTime: 1000 * 60,
-    initialData: DEMO_PROJECTS,
   });
 }
 
