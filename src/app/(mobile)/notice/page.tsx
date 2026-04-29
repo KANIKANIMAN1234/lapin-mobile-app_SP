@@ -14,7 +14,11 @@ async function callFormatText(text: string): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ input_text: text, prompt_key: 'notice' }),
   });
-  const json = await res.json();
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(err?.error ?? `AI整形APIエラー (${res.status})`);
+  }
+  const json = await res.json() as { success: boolean; error?: string; data?: { formatted_text?: string } };
   if (!json.success) throw new Error(json.error ?? 'AI整形に失敗しました');
   return json.data?.formatted_text ?? text;
 }
@@ -91,10 +95,13 @@ export default function NoticePage() {
       const result = await callFormatText(form.body);
       setForm((f) => ({ ...f, body: result }));
       showToast('AI整形しました', 'success');
-    } catch {
-      showToast('AI整形に失敗しました', 'error');
+    } catch (e) {
+      console.error('[NoticePage] handleFormat error:', e);
+      const msg = e instanceof Error ? e.message : 'AI整形に失敗しました';
+      showToast(msg, 'error');
+    } finally {
+      setFormatting(false);
     }
-    setFormatting(false);
   };
 
   // ── 一覧取得 ─────────────────────────────────────────────────
@@ -277,21 +284,18 @@ export default function NoticePage() {
                 {voiceStatus || (isRecording ? '録音中...' : '')}
               </p>
             )}
-            {/* AI整形ボタン */}
-            <button
-              type="button"
-              onClick={handleFormat}
-              disabled={formatting || !form.body.trim()}
-              className="mt-2 flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {formatting ? (
-                <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <span className="material-icons text-sm">auto_fix_high</span>
-              )}
-              {formatting ? 'AI整形中...' : 'AI整形'}
-            </button>
           </div>
+
+          {/* AI整形ボタン（form-field の外に出すことで CSS の干渉を回避） */}
+          <button
+            className="btn-format mb-3"
+            onClick={handleFormat}
+            type="button"
+            disabled={formatting}
+          >
+            <span className="material-icons text-base text-purple-500">auto_fix_high</span>
+            {formatting ? 'AI整形中...' : 'AI整形'}
+          </button>
 
           <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
             <input
