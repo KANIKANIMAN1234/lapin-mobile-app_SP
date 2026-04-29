@@ -42,7 +42,7 @@ function isSpeechRecognitionAvailable(): boolean {
 
 function isMediaRecorderAvailable(): boolean {
   if (typeof window === 'undefined') return false;
-  return !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+  return !!(navigator.mediaDevices?.getUserMedia && typeof window.MediaRecorder !== 'undefined');
 }
 
 export function useVoiceInput({
