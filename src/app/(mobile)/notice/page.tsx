@@ -6,6 +6,18 @@ import { createClient } from '@/lib/supabase';
 import { Toast } from '@/components/ui/Toast';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { useToast } from '@/hooks/useToast';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
+
+async function callFormatText(text: string): Promise<string> {
+  const res = await fetch('/api/format-text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input_text: text, prompt_key: 'notice' }),
+  });
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error ?? 'AI整形に失敗しました');
+  return json.data?.formatted_text ?? text;
+}
 
 // ── 型定義 ────────────────────────────────────────────────────
 type NoticeCategory = 'general' | 'notice' | 'tip';
@@ -57,6 +69,7 @@ export default function NoticePage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [formatting, setFormatting] = useState(false);
 
   const [form, setForm] = useState({
     title: '',
@@ -64,6 +77,25 @@ export default function NoticePage() {
     category: 'general' as NoticeCategory,
     is_pinned: false,
   });
+
+  const { isRecording, voiceStatus, toggleVoice, transcribing } = useVoiceInput({
+    currentText: form.body,
+    onTextUpdate: (text) => setForm((f) => ({ ...f, body: text })),
+    onError: (msg) => showToast(msg, 'error'),
+  });
+
+  const handleFormat = async () => {
+    if (!form.body.trim()) { showToast('整形する文章がありません', 'error'); return; }
+    setFormatting(true);
+    try {
+      const result = await callFormatText(form.body);
+      setForm((f) => ({ ...f, body: result }));
+      showToast('AI整形しました', 'success');
+    } catch {
+      showToast('AI整形に失敗しました', 'error');
+    }
+    setFormatting(false);
+  };
 
   // ── 一覧取得 ─────────────────────────────────────────────────
   const fetchNotices = useCallback(async () => {
@@ -211,13 +243,54 @@ export default function NoticePage() {
 
           <div className="form-field">
             <label>本文 *</label>
-            <textarea
-              rows={4}
-              value={form.body}
-              onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
-              placeholder="連絡内容を入力..."
-              required
-            />
+            <div className="relative">
+              <textarea
+                rows={4}
+                value={form.body}
+                onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
+                placeholder="連絡内容を入力..."
+                required
+                className="w-full pr-12"
+              />
+              {/* 音声入力ボタン */}
+              <button
+                type="button"
+                onClick={toggleVoice}
+                disabled={transcribing}
+                className={`absolute right-2 top-2 p-2 rounded-full transition-colors ${
+                  isRecording
+                    ? 'bg-red-500 text-white animate-pulse'
+                    : 'bg-orange-100 text-orange-600 hover:bg-orange-200'
+                }`}
+              >
+                {transcribing ? (
+                  <div className="w-5 h-5 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span className="material-icons text-base">mic</span>
+                )}
+              </button>
+            </div>
+            {/* 音声ステータス */}
+            {(isRecording || transcribing || voiceStatus) && (
+              <p className="text-xs text-orange-500 mt-1 flex items-center gap-1">
+                {isRecording && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse inline-block" />}
+                {voiceStatus || (isRecording ? '録音中...' : '')}
+              </p>
+            )}
+            {/* AI整形ボタン */}
+            <button
+              type="button"
+              onClick={handleFormat}
+              disabled={formatting || !form.body.trim()}
+              className="mt-2 flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {formatting ? (
+                <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span className="material-icons text-sm">auto_fix_high</span>
+              )}
+              {formatting ? 'AI整形中...' : 'AI整形'}
+            </button>
           </div>
 
           <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
