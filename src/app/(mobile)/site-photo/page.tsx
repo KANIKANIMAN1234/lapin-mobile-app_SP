@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { Toast } from '@/components/ui/Toast';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { useToast } from '@/hooks/useToast';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
 import type { PhotoCategory } from '@/types';
 
 const PHOTO_CATEGORIES: PhotoCategory[] = [
@@ -48,14 +49,16 @@ export default function SitePhotoPage() {
   const [availableWorkTypes, setAvailableWorkTypes] = useState<string[]>([]);
   const [memo, setMemo] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState('');
   const [formatting, setFormatting] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recognitionRef = useRef<any>(null);
+
+  const { isRecording, voiceStatus, toggleVoice, transcribing } = useVoiceInput({
+    currentText: memo,
+    onTextUpdate: setMemo,
+    onError: (msg) => showToast(msg, 'error'),
+  });
 
   const handleProjectChange = (id: string) => {
     setProjectId(id);
@@ -79,54 +82,6 @@ export default function SitePhotoPage() {
       };
       reader.readAsDataURL(file);
     });
-  };
-
-  const toggleVoice = () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SR: any = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-
-    if (!SR) {
-      showToast('お使いのブラウザは音声入力に対応していません', 'error');
-      return;
-    }
-
-    if (isRecording && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsRecording(false);
-      setVoiceStatus('音声入力を終了しました');
-      return;
-    }
-
-    const recognition = new SR();
-    recognition.lang = 'ja-JP';
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    let finalText = memo;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onresult = (e: any) => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) finalText += t;
-        else interim = t;
-      }
-      setMemo(finalText + interim);
-    };
-    recognition.onerror = () => {
-      setIsRecording(false);
-      setVoiceStatus('');
-      showToast('音声認識エラーが発生しました', 'error');
-    };
-    recognition.onend = () => {
-      setIsRecording(false);
-      setVoiceStatus('音声入力を終了しました');
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-    setIsRecording(true);
-    setVoiceStatus('音声認識中...話してください');
   };
 
   const handleUpload = async () => {
@@ -219,14 +174,19 @@ export default function SitePhotoPage() {
               className={`voice-btn absolute right-2 bottom-2 ${isRecording ? 'recording' : ''}`}
               onClick={toggleVoice}
               type="button"
+              disabled={transcribing}
             >
-              <span className="material-icons text-white text-base">
-                {isRecording ? 'stop' : 'mic'}
-              </span>
+              {transcribing ? (
+                <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span className="material-icons text-white text-base">
+                  {isRecording ? 'stop' : 'mic'}
+                </span>
+              )}
             </button>
           </div>
           {voiceStatus && (
-            <p className={`text-xs mt-1 ${isRecording ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
+            <p className={`text-xs mt-1 ${isRecording ? 'text-red-500 font-bold' : transcribing ? 'text-blue-500 font-bold' : 'text-gray-500'}`}>
               {voiceStatus}
             </p>
           )}

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { Toast } from '@/components/ui/Toast';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { useToast } from '@/hooks/useToast';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { createClient } from '@/lib/supabase';
 
 const WORK_TYPES = ['外壁塗装', '屋根塗装', 'キッチン', '浴室', 'トイレ', '内装', '外構', 'その他'];
@@ -82,12 +83,19 @@ export default function NewProjectPage() {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [modalData, setModalData] = useState<ModalData | null>(null);
-  const [isRecordingDesc, setIsRecordingDesc] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState('');
   const [formatting, setFormatting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recognitionRef = useRef<any>(null);
+
+  const {
+    isRecording: isRecordingDesc,
+    voiceStatus,
+    toggleVoice: handleVoiceToggle,
+    transcribing: voiceTranscribing,
+  } = useVoiceInput({
+    currentText: form.workDesc,
+    onTextUpdate: (text) => setForm((prev) => ({ ...prev, workDesc: text })),
+    onError: (msg) => showToast(msg, 'error'),
+  });
 
   // 従業員一覧をSupabaseから取得
   useEffect(() => {
@@ -124,58 +132,6 @@ export default function NewProjectPage() {
     }));
   };
 
-  const handleVoiceToggle = () => {
-    // 録音中 → 停止
-    if (isRecordingDesc) {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-        recognitionRef.current = null;
-      }
-      setIsRecordingDesc(false);
-      setVoiceStatus('');
-      return;
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SR: any = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-    if (!SR) { showToast('お使いのブラウザは音声入力に対応していません', 'error'); return; }
-
-    const recognition = new SR();
-    recognition.lang = 'ja-JP';
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    // クロージャ問題を避けるため finalText をローカル変数で管理
-    // 初期値は現在のフォーム値のスナップショット
-    let finalText = form.workDesc;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onresult = (e: any) => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) finalText += t;
-        else interim = t;
-      }
-      // setForm の関数アップデート形式で直接更新（stale closure を回避）
-      setForm((prev) => ({ ...prev, workDesc: finalText + interim }));
-    };
-    recognition.onerror = () => {
-      setIsRecordingDesc(false);
-      setVoiceStatus('');
-      recognitionRef.current = null;
-    };
-    recognition.onend = () => {
-      setIsRecordingDesc(false);
-      setVoiceStatus('');
-      recognitionRef.current = null;
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-    setIsRecordingDesc(true);
-    setVoiceStatus('録音中... 停止ボタンで確定');
-  };
 
   const validate = (): boolean => {
     if (!form.customerName) { showToast('顧客名を入力してください', 'error'); return false; }
@@ -491,19 +447,24 @@ export default function NewProjectPage() {
             />
             <button
               className={`absolute top-2 right-2 flex items-center justify-center rounded-full ${
-                isRecordingDesc ? 'bg-red-500 animate-pulse' : 'bg-gray-400'
+                isRecordingDesc ? 'bg-red-500 animate-pulse' : voiceTranscribing ? 'bg-blue-400' : 'bg-gray-400'
               }`}
               style={{ width: 32, height: 32 }}
               onClick={handleVoiceToggle}
               type="button"
+              disabled={voiceTranscribing}
             >
-              <span className="material-icons text-white text-sm">
-                {isRecordingDesc ? 'stop' : 'mic'}
-              </span>
+              {voiceTranscribing ? (
+                <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span className="material-icons text-white text-sm">
+                  {isRecordingDesc ? 'stop' : 'mic'}
+                </span>
+              )}
             </button>
           </div>
           {voiceStatus && (
-            <p className={`text-[10px] mt-0.5 ${isRecordingDesc ? 'text-red-500 font-semibold' : 'text-gray-500'}`}>
+            <p className={`text-[10px] mt-0.5 ${isRecordingDesc ? 'text-red-500 font-semibold' : voiceTranscribing ? 'text-blue-500 font-semibold' : 'text-gray-500'}`}>
               {voiceStatus}
             </p>
           )}
