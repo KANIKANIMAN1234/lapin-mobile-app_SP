@@ -11,6 +11,37 @@ import { createClient } from '@/lib/supabase';
 
 const today = () => new Date().toISOString().split('T')[0];
 
+const REPORT_PHOTOS_BUCKET = 'report-photos';
+
+async function uploadReportPhotoDataUrls(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  dataUrls: string[],
+): Promise<string[]> {
+  const out: string[] = [];
+  for (let i = 0; i < dataUrls.length; i++) {
+    const res = await fetch(dataUrls[i]);
+    const blob = await res.blob();
+    const mime = blob.type || 'image/jpeg';
+    const ext = mime.includes('png')
+      ? 'png'
+      : mime.includes('webp')
+        ? 'webp'
+        : mime.includes('heic')
+          ? 'heic'
+          : 'jpg';
+    const path = `${userId}/reports/${Date.now()}_${i}.${ext}`;
+    const { error } = await supabase.storage.from(REPORT_PHOTOS_BUCKET).upload(path, blob, {
+      contentType: mime,
+      upsert: false,
+    });
+    if (error) throw error;
+    const { data } = supabase.storage.from(REPORT_PHOTOS_BUCKET).getPublicUrl(path);
+    out.push(data.publicUrl);
+  }
+  return out;
+}
+
 async function callFormatText(text: string, promptKey: string): Promise<string> {
   const res = await fetch('/api/format-text', {
     method: 'POST',
@@ -88,12 +119,16 @@ export default function ReportPage() {
     try {
       const supabase = createClient();
       const titleFinal = title.trim() || `${date} 日報`;
+      const uploadedUrls =
+        photoUrls.length > 0 ? await uploadReportPhotoDataUrls(supabase, user.id, photoUrls) : null;
+
       const row = {
         user_id: user.id,
         project_id: projectId,
         report_date: date,
         title: titleFinal,
         content,
+        photo_urls: uploadedUrls ?? [],
       };
 
       // 同一ユーザー×案件×日付は DB で 1 件のみ。再送信は更新扱いにする。
@@ -107,10 +142,13 @@ export default function ReportPage() {
       if (selErr) throw selErr;
 
       if (existing?.id) {
-        const { error } = await supabase
-          .from('t_reports')
-          .update({ title: titleFinal, content })
-          .eq('id', existing.id);
+        const patch: {
+          title: string;
+          content: string;
+          photo_urls?: string[];
+        } = { title: titleFinal, content };
+        if (uploadedUrls !== null) patch.photo_urls = uploadedUrls;
+        const { error } = await supabase.from('t_reports').update(patch).eq('id', existing.id);
         if (error) throw error;
         showToast('日報を更新しました', 'success');
       } else {
