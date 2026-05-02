@@ -23,9 +23,13 @@ const ALLOWED_MIME = new Set([
   '',
 ]);
 
-const REPORT_PHOTOS_BUCKET = 'report-photos';
-
 type FileItem = { buf: Buffer; mime: string };
+
+/** サービスアカウントにマイドライブの保管枠がない場合のユーザー向け説明 */
+const DRIVE_SA_QUOTA_MESSAGE =
+  'Google Drive に写真を保存できませんでした。サービスアカウントにはマイドライブのストレージ枠がないため、' +
+  'ルートや案件フォルダを「共有ドライブ」上に置き、サービスアカウントをその共有ドライブのメンバー（コンテンツ管理者など）に追加してください。' +
+  '設定は管理者が Google Workspace / Drive で行ってください。';
 
 function createAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -76,12 +80,10 @@ function extFromMime(mime: string): string {
   return 'jpg';
 }
 
-/** PC の現場写真と同様、img タグで表示しやすい直リンク */
 function driveImagePublicUrl(fileId: string): string {
   return `https://drive.google.com/uc?export=view&id=${fileId}`;
 }
 
-/** サービスアカウントの「マイドライブに保管枠が無い」系エラー（共有ドライブ未使用時によく出る） */
 function isServiceAccountStorageQuotaError(err: unknown): boolean {
   let cur: unknown = err;
   for (let d = 0; d < 4 && cur; d++) {
@@ -93,28 +95,6 @@ function isServiceAccountStorageQuotaError(err: unknown): boolean {
     cur = cur instanceof Error && cur.cause ? cur.cause : null;
   }
   return false;
-}
-
-async function uploadToSupabaseReportBucket(
-  admin: SupabaseClient,
-  userId: string,
-  dateSlug: string,
-  items: FileItem[],
-): Promise<string[]> {
-  const urls: string[] = [];
-  for (let i = 0; i < items.length; i++) {
-    const { buf, mime } = items[i];
-    const ext = extFromMime(mime);
-    const path = `${userId}/reports/${dateSlug}_${Date.now()}_${i}.${ext}`;
-    const { error } = await admin.storage.from(REPORT_PHOTOS_BUCKET).upload(path, buf, {
-      contentType: mime,
-      upsert: false,
-    });
-    if (error) throw error;
-    const { data } = admin.storage.from(REPORT_PHOTOS_BUCKET).getPublicUrl(path);
-    urls.push(data.publicUrl);
-  }
-  return urls;
 }
 
 async function uploadItemsToDriveNippouFolder(
@@ -136,7 +116,7 @@ async function uploadItemsToDriveNippouFolder(
 
 /**
  * FormData: projectId, reportDate (YYYY-MM-DD 推奨), file × N（画像）
- * → 優先: 案件 Drive 内の「日報」フォルダ。SA の保管枠エラー時は Supabase Storage report-photos にフォールバック。
+ * → 案件 Google Drive 内の「日報」フォルダへ保存（Storage は使用しない）。
  */
 export async function POST(req: NextRequest) {
   try {
@@ -144,6 +124,19 @@ export async function POST(req: NextRequest) {
     if (!userId) {
       return NextResponse.json({ success: false, error: '認証が必要です' }, { status: 401 });
     }
+
+    if (!isDriveConfigured() || !getDriveClient()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'GOOGLE_SERVICE_ACCOUNT_JSON が未設定、または Drive クライアントを初期化できません。環境変数を確認してください。',
+        },
+        { status: 500 }
+      );
+    }
+
+    const drive = getDriveClient()!;
 
     const form = await req.formData();
     const projectId = String(form.get('projectId') ?? '').trim();
@@ -193,6 +186,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'この案件への操作権限がありません' }, { status: 403 });
     }
 
+    const parentDriveId = (row.drive_folder_id as string | null)?.trim();
+    if (!parentDriveId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            '案件の Google Drive フォルダが未設定です。案件作成時の Drive 連携を完了してから再度お試しください。',
+        },
+        { status: 400 }
+      );
+    }
+
     const dateSlug = /^\d{4}-\d{2}-\d{2}$/.test(reportDateRaw)
       ? reportDateRaw.replace(/-/g, '')
       : new Date()
@@ -207,39 +212,14 @@ export async function POST(req: NextRequest) {
       items.push({ buf, mime });
     }
 
-    const parentDriveId = (row.drive_folder_id as string | null)?.trim();
-    if (!parentDriveId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            '案件の Google Drive フォルダが未設定です。案件作成時の Drive 連携を完了してから再度お試しください。',
-        },
-        { status: 400 }
-      );
-    }
-
-    const driveReady = isDriveConfigured() && !!getDriveClient();
-
-    if (!driveReady) {
-      const urls = await uploadToSupabaseReportBucket(admin, userId, dateSlug, items);
-      return NextResponse.json({ success: true, urls, storageFallback: true });
-    }
-
-    const drive = getDriveClient()!;
-
     try {
       const nippouFolderId = await findOrCreateChildFolder(drive, parentDriveId, '日報');
       const urls = await uploadItemsToDriveNippouFolder(drive, nippouFolderId, dateSlug, items);
-      return NextResponse.json({ success: true, urls, storageFallback: false });
+      return NextResponse.json({ success: true, urls });
     } catch (e) {
       if (isServiceAccountStorageQuotaError(e)) {
-        console.warn(
-          '[report-photos-upload] Google Drive に保存できませんでした（サービスアカウントの保管枠など）。Supabase Storage にフォールバックします。',
-          e
-        );
-        const urls = await uploadToSupabaseReportBucket(admin, userId, dateSlug, items);
-        return NextResponse.json({ success: true, urls, storageFallback: true });
+        console.error('[report-photos-upload] Drive SA quota / shared drive 設定が必要', e);
+        return NextResponse.json({ success: false, error: DRIVE_SA_QUOTA_MESSAGE }, { status: 503 });
       }
       throw e;
     }

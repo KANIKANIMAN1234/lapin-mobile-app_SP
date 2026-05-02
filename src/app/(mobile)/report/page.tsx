@@ -11,16 +11,14 @@ import { createClient } from '@/lib/supabase';
 
 const today = () => new Date().toISOString().split('T')[0];
 
-type UploadReportPhotosResult = { urls: string[]; storageFallback: boolean };
-
-/** 案件 Google Drive の「日報」フォルダへ保存（不可時は Supabase Storage にフォールバック） */
+/** 案件 Google Drive の「日報」フォルダへ保存 */
 async function uploadReportPhotosToDrive(
   accessToken: string,
   projectId: string,
   reportDate: string,
   dataUrls: string[],
-): Promise<UploadReportPhotosResult> {
-  if (dataUrls.length === 0) return { urls: [], storageFallback: false };
+): Promise<string[]> {
+  if (dataUrls.length === 0) return [];
   const fd = new FormData();
   fd.append('projectId', projectId);
   fd.append('reportDate', reportDate);
@@ -42,16 +40,11 @@ async function uploadReportPhotosToDrive(
     headers: { Authorization: `Bearer ${accessToken}` },
     body: fd,
   });
-  const json = (await apiRes.json()) as {
-    success?: boolean;
-    urls?: string[];
-    storageFallback?: boolean;
-    error?: string;
-  };
+  const json = (await apiRes.json()) as { success?: boolean; urls?: string[]; error?: string };
   if (!apiRes.ok || !json.success || !Array.isArray(json.urls)) {
-    throw new Error(json.error || '写真のアップロードに失敗しました');
+    throw new Error(json.error || '写真の Google Drive への保存に失敗しました');
   }
-  return { urls: json.urls, storageFallback: !!json.storageFallback };
+  return json.urls;
 }
 
 async function callFormatText(text: string, promptKey: string): Promise<string> {
@@ -139,12 +132,10 @@ export default function ReportPage() {
       }
 
       const titleFinal = title.trim() || `${date} 日報`;
-      const uploadResult =
+      const uploadedUrls =
         photoUrls.length > 0
           ? await uploadReportPhotosToDrive(session.access_token, projectId, date, photoUrls)
           : null;
-      const uploadedUrls = uploadResult?.urls ?? null;
-      const photoStorageFallback = uploadResult?.storageFallback ?? false;
 
       const row = {
         user_id: user.id,
@@ -174,21 +165,11 @@ export default function ReportPage() {
         if (uploadedUrls !== null) patch.photo_urls = uploadedUrls;
         const { error } = await supabase.from('t_reports').update(patch).eq('id', existing.id);
         if (error) throw error;
-        showToast(
-          photoStorageFallback
-            ? '日報を更新しました（写真は Supabase に保存しました。Drive は共有ドライブ運用で利用できます）'
-            : '日報を更新しました',
-          'success'
-        );
+        showToast('日報を更新しました', 'success');
       } else {
         const { error } = await supabase.from('t_reports').insert(row);
         if (error) throw error;
-        showToast(
-          photoStorageFallback
-            ? '日報を送信しました（写真は Supabase に保存しました。Drive は共有ドライブ運用で利用できます）'
-            : '日報を送信しました',
-          'success'
-        );
+        showToast('日報を送信しました', 'success');
       }
       setProjectId('');
       setTitle('');
