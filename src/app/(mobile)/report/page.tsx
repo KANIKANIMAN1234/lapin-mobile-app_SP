@@ -75,6 +75,10 @@ export default function ReportPage() {
       showToast('報告内容を入力してください', 'error');
       return;
     }
+    if (!projectId) {
+      showToast('関連案件を選択してください', 'error');
+      return;
+    }
     if (!user?.id) {
       showToast('ログイン情報が取得できません。再度ログインしてください。', 'error');
       return;
@@ -85,6 +89,7 @@ export default function ReportPage() {
       const supabase = createClient();
       const { error } = await supabase.from('t_reports').insert({
         user_id: user.id,
+        project_id: projectId,
         report_date: date,
         title: title || `${date} 日報`,
         content,
@@ -121,6 +126,19 @@ export default function ReportPage() {
         </div>
 
         <div className="form-field">
+          <label>関連案件 *</label>
+          <p className="text-xs text-gray-500 mb-1">PCの案件詳細「日報」タブに表示されます</p>
+          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">案件を選択してください</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.project_number} {p.customer_name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-field">
           <label>タイトル（省略可）</label>
           <input
             type="text"
@@ -128,18 +146,6 @@ export default function ReportPage() {
             onChange={(e) => setTitle(e.target.value)}
             placeholder={`${date} 日報`}
           />
-        </div>
-
-        <div className="form-field">
-          <label>関連案件（参考）</label>
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            <option value="">案件を選択（任意）</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.project_number} {p.customer_name}
-              </option>
-            ))}
-          </select>
         </div>
 
         <div className="form-field">
