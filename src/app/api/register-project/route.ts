@@ -45,10 +45,30 @@ function createAdmin(): SupabaseClient {
   return createClient(url, key);
 }
 
+/** 既存顧客の直近案件の担当（リピート時の引き継ぎ用） */
+async function getLatestAssignedForCustomer(
+  admin: SupabaseClient,
+  customerId: string
+): Promise<string | null> {
+  const { data } = await admin
+    .from('t_projects')
+    .select('assigned_to')
+    .eq('customer_id', customerId)
+    .is('deleted_at', null)
+    .order('inquiry_date', { ascending: false })
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data?.assigned_to as string) ?? null;
+}
+
+type RegisterPermOpts = { registrationKind: RegistrationKind; customerId: string };
+
 async function assertCanRegisterProject(
   admin: SupabaseClient,
   userId: string,
-  assignedTo: string
+  assignedTo: string,
+  opts?: RegisterPermOpts
 ): Promise<{ ok: false; message: string } | { ok: true; role: string }> {
   const { data: profile, error } = await admin
     .from('m_users')
@@ -61,10 +81,16 @@ async function assertCanRegisterProject(
   const role = profile.role as string;
   if (role === 'admin' || role === 'staff') return { ok: true, role };
   if (role === 'sales') {
-    if (assignedTo !== userId) {
-      return { ok: false, message: '営業は自分を担当とする案件のみ登録できます' };
+    if (assignedTo === userId) return { ok: true, role };
+    if (opts?.registrationKind === 'existing') {
+      const last = await getLatestAssignedForCustomer(admin, opts.customerId);
+      if (last && last === assignedTo) return { ok: true, role };
     }
-    return { ok: true, role };
+    return {
+      ok: false,
+      message:
+        '営業はご自身を担当とする案件のみ登録できます（既存顧客は一覧で選んだ前回担当への引き継ぎのみ可）',
+    };
   }
   return { ok: false, message: '案件登録権限がありません' };
 }
@@ -90,14 +116,37 @@ export async function POST(req: NextRequest) {
     const assignedTo = (body.assignedTo?.trim() || userId) as string;
     const admin = createAdmin();
 
-    const perm = await assertCanRegisterProject(admin, userId, assignedTo);
-    if (!perm.ok) {
-      return NextResponse.json({ success: false, error: perm.message }, { status: 403 });
-    }
-
     let customerId: string;
 
-    if (body.registrationKind === 'new') {
+    if (body.registrationKind === 'existing') {
+      const sid = body.selectedCustomerId?.trim();
+      if (!sid) {
+        return NextResponse.json({ success: false, error: '既存顧客が選択されていません' }, { status: 400 });
+      }
+      const { data: existing, error: exErr } = await admin
+        .from('m_customers')
+        .select('id')
+        .eq('id', sid)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (exErr || !existing?.id) {
+        return NextResponse.json({ success: false, error: '選択した顧客が見つかりません' }, { status: 400 });
+      }
+      customerId = existing.id as string;
+
+      const perm = await assertCanRegisterProject(admin, userId, assignedTo, {
+        registrationKind: 'existing',
+        customerId,
+      });
+      if (!perm.ok) {
+        return NextResponse.json({ success: false, error: perm.message }, { status: 403 });
+      }
+    } else {
+      const perm = await assertCanRegisterProject(admin, userId, assignedTo);
+      if (!perm.ok) {
+        return NextResponse.json({ success: false, error: perm.message }, { status: 403 });
+      }
+
       const { data: cust, error: cErr } = await admin
         .from('m_customers')
         .insert({
@@ -119,21 +168,6 @@ export async function POST(req: NextRequest) {
         );
       }
       customerId = cust.id as string;
-    } else {
-      const sid = body.selectedCustomerId?.trim();
-      if (!sid) {
-        return NextResponse.json({ success: false, error: '既存顧客が選択されていません' }, { status: 400 });
-      }
-      const { data: existing, error: exErr } = await admin
-        .from('m_customers')
-        .select('id')
-        .eq('id', sid)
-        .is('deleted_at', null)
-        .maybeSingle();
-      if (exErr || !existing?.id) {
-        return NextResponse.json({ success: false, error: '選択した顧客が見つかりません' }, { status: 400 });
-      }
-      customerId = existing.id as string;
     }
 
     const workDesc =

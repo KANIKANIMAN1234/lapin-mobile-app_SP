@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { Toast } from '@/components/ui/Toast';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
@@ -87,6 +87,8 @@ export default function NewProjectPage() {
   });
 
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const employeesRef = useRef<Employee[]>([]);
+  employeesRef.current = employees;
   /** 新規顧客 vs 既存顧客（リピート）。モバイルは縦並びレイアウトで表示 */
   const [registrationKind, setRegistrationKind] = useState<'new' | 'existing'>('new');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -184,7 +186,34 @@ export default function NewProjectPage() {
       address: c.address,
       phone: c.phone,
       email: c.email ?? '',
+      assigned: '',
     }));
+    void (async () => {
+      try {
+        const supabase = createClient();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+        const res = await fetch(
+          `/api/customer-default-assigned?customerId=${encodeURIComponent(customerId)}`,
+          { headers: { Authorization: `Bearer ${session.access_token}` } }
+        );
+        if (!res.ok) return;
+        const json = (await res.json()) as { assignedTo?: string | null };
+        const aid = json.assignedTo?.trim();
+        if (!aid) return;
+        for (let i = 0; i < 25; i++) {
+          if (employeesRef.current.some((e) => e.id === aid)) {
+            setForm((prev) => ({ ...prev, assigned: aid! }));
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 120));
+        }
+      } catch (e) {
+        console.error('[new-project] customer-default-assigned', e);
+      }
+    })();
   };
 
   const update = (field: keyof FormState, value: string | string[]) => {
@@ -506,7 +535,10 @@ export default function NewProjectPage() {
             onChange={(e) => {
               const v = e.target.value as 'new' | 'existing';
               setRegistrationKind(v);
-              if (v === 'new') setSelectedCustomerId(null);
+              if (v === 'new') {
+                setSelectedCustomerId(null);
+                setForm((prev) => ({ ...prev, assigned: '' }));
+              }
             }}
             className="w-full"
           >
@@ -735,6 +767,11 @@ export default function NewProjectPage() {
         <p className="text-xs mt-2" style={{ color: '#3b82f6' }}>
           ※ 登録すると担当者にLINE通知が送信されます
         </p>
+        {registrationKind === 'existing' && (
+          <p className="text-[0.65rem] mt-2 text-gray-600 leading-relaxed">
+            既存顧客では、直近の案件の担当者を自動で選びます（プルダウンで変更できます）。
+          </p>
+        )}
       </div>
 
       {/* 備考 */}
