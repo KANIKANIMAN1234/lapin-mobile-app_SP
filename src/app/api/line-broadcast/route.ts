@@ -1,36 +1,88 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+
+type NotifyTarget = 'all' | 'individual' | 'office' | 'sales';
 
 interface BroadcastPayload {
   message: string;
+  notifyTarget?: NotifyTarget;
+  notifyUserId?: string | null;
 }
 
-async function fetchAllLineUserIds(): Promise<string[]> {
+function getServiceSupabase(): SupabaseClient | null {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseKey) return null;
+  return createClient(supabaseUrl, supabaseKey);
+}
 
-  if (!supabaseUrl || !supabaseKey) return [];
+async function collectLineUserIds(
+  supabase: SupabaseClient,
+  target: NotifyTarget,
+  notifyUserId?: string | null,
+): Promise<string[]> {
+  if (target === 'individual') {
+    if (!notifyUserId?.trim()) return [];
+    const { data, error } = await supabase
+      .from('m_users')
+      .select('line_user_id')
+      .eq('id', notifyUserId.trim())
+      .eq('status', 'active')
+      .maybeSingle();
+    if (error) {
+      console.error('[line-broadcast] individual fetch error:', error);
+      return [];
+    }
+    const id = data?.line_user_id;
+    return id ? [id] : [];
+  }
 
-  try {
-    const supabase = createClient(supabaseUrl, supabaseKey);
+  if (target === 'office') {
     const { data, error } = await supabase
       .from('m_users')
       .select('line_user_id')
       .eq('status', 'active')
+      .in('role', ['admin', 'staff'])
       .not('line_user_id', 'is', null);
-
     if (error) {
-      console.error('[line-broadcast] fetchUsers error:', error);
+      console.error('[line-broadcast] office fetch error:', error);
       return [];
     }
     return (data ?? [])
       .map((u: { line_user_id: string | null }) => u.line_user_id)
       .filter((id): id is string => !!id);
-  } catch (e) {
-    console.error('[line-broadcast] fetchUsers exception:', e);
+  }
+
+  if (target === 'sales') {
+    const { data, error } = await supabase
+      .from('m_users')
+      .select('line_user_id')
+      .eq('status', 'active')
+      .eq('role', 'sales')
+      .not('line_user_id', 'is', null);
+    if (error) {
+      console.error('[line-broadcast] sales fetch error:', error);
+      return [];
+    }
+    return (data ?? [])
+      .map((u: { line_user_id: string | null }) => u.line_user_id)
+      .filter((id): id is string => !!id);
+  }
+
+  const { data, error } = await supabase
+    .from('m_users')
+    .select('line_user_id')
+    .eq('status', 'active')
+    .not('line_user_id', 'is', null);
+
+  if (error) {
+    console.error('[line-broadcast] all fetch error:', error);
     return [];
   }
+  return (data ?? [])
+    .map((u: { line_user_id: string | null }) => u.line_user_id)
+    .filter((id): id is string => !!id);
 }
 
 async function sendPush(lineUserId: string, message: string, accessToken: string) {
@@ -62,12 +114,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { message }: BroadcastPayload = await req.json();
+    let body: BroadcastPayload;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, error: 'Invalid JSON' }, { status: 400 });
+    }
+
+    const { message, notifyTarget = 'all', notifyUserId } = body;
     if (!message?.trim()) {
       return NextResponse.json({ success: false, error: 'message は必須です' }, { status: 400 });
     }
 
-    const lineUserIds = await fetchAllLineUserIds();
+    if (notifyTarget === 'individual' && !notifyUserId?.trim()) {
+      return NextResponse.json(
+        { success: false, error: '個別通知には notifyUserId が必要です' },
+        { status: 400 },
+      );
+    }
+
+    const supabase = getServiceSupabase();
+    if (!supabase) {
+      return NextResponse.json(
+        { success: false, error: 'Supabase 環境変数が設定されていません' },
+        { status: 500 },
+      );
+    }
+
+    const lineUserIds = await collectLineUserIds(supabase, notifyTarget, notifyUserId);
     if (lineUserIds.length === 0) {
       return NextResponse.json({ success: true, message: '送信対象ユーザーがいません', sent: 0 });
     }

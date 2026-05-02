@@ -32,13 +32,12 @@ export function BottomNav() {
   const pathname = usePathname();
   const { user } = useAuthStore();
 
-  const isAdmin = user?.role === 'admin';
   const canRegister = user?.can_register_project === true;
 
   const items = [
     ...NAV_ITEMS,
     ...(canRegister ? [REGISTER_ITEM] : []),
-    ...(isAdmin ? [NOTICE_ITEM] : []),
+    NOTICE_ITEM,
   ];
 
   return (
