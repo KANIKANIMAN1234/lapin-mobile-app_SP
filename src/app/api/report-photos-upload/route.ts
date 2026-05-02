@@ -23,6 +23,10 @@ const ALLOWED_MIME = new Set([
   '',
 ]);
 
+const REPORT_PHOTOS_BUCKET = 'report-photos';
+
+type FileItem = { buf: Buffer; mime: string };
+
 function createAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -77,27 +81,68 @@ function driveImagePublicUrl(fileId: string): string {
   return `https://drive.google.com/uc?export=view&id=${fileId}`;
 }
 
+/** サービスアカウントの「マイドライブに保管枠が無い」系エラー（共有ドライブ未使用時によく出る） */
+function isServiceAccountStorageQuotaError(err: unknown): boolean {
+  let cur: unknown = err;
+  for (let d = 0; d < 4 && cur; d++) {
+    const msg = cur instanceof Error ? cur.message : String(cur);
+    if (/Service Accounts do not have storage quota/i.test(msg)) return true;
+    if (/storage quota/i.test(msg)) return true;
+    const g = cur as { errors?: { reason?: string }[] };
+    if (Array.isArray(g.errors) && g.errors.some((e) => e.reason === 'storageQuotaExceeded')) return true;
+    cur = cur instanceof Error && cur.cause ? cur.cause : null;
+  }
+  return false;
+}
+
+async function uploadToSupabaseReportBucket(
+  admin: SupabaseClient,
+  userId: string,
+  dateSlug: string,
+  items: FileItem[],
+): Promise<string[]> {
+  const urls: string[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const { buf, mime } = items[i];
+    const ext = extFromMime(mime);
+    const path = `${userId}/reports/${dateSlug}_${Date.now()}_${i}.${ext}`;
+    const { error } = await admin.storage.from(REPORT_PHOTOS_BUCKET).upload(path, buf, {
+      contentType: mime,
+      upsert: false,
+    });
+    if (error) throw error;
+    const { data } = admin.storage.from(REPORT_PHOTOS_BUCKET).getPublicUrl(path);
+    urls.push(data.publicUrl);
+  }
+  return urls;
+}
+
+async function uploadItemsToDriveNippouFolder(
+  drive: NonNullable<ReturnType<typeof getDriveClient>>,
+  nippouFolderId: string,
+  dateSlug: string,
+  items: FileItem[],
+): Promise<string[]> {
+  const urls: string[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const { buf, mime } = items[i];
+    const ext = extFromMime(mime);
+    const baseName = sanitizeDriveSegment(`日報_${dateSlug}_${i + 1}.${ext}`, 200);
+    const uploaded = await uploadFileToDriveFolder(drive, nippouFolderId, baseName, mime, buf);
+    urls.push(driveImagePublicUrl(uploaded.id));
+  }
+  return urls;
+}
+
 /**
  * FormData: projectId, reportDate (YYYY-MM-DD 推奨), file × N（画像）
- * → 案件の Drive フォルダ直下に「日報」サブフォルダを作り、その中へ保存。
+ * → 優先: 案件 Drive 内の「日報」フォルダ。SA の保管枠エラー時は Supabase Storage report-photos にフォールバック。
  */
 export async function POST(req: NextRequest) {
   try {
     const userId = await getBearerUserId(req);
     if (!userId) {
       return NextResponse.json({ success: false, error: '認証が必要です' }, { status: 401 });
-    }
-
-    if (!isDriveConfigured()) {
-      return NextResponse.json(
-        { success: false, error: 'GOOGLE_SERVICE_ACCOUNT_JSON が未設定のため Drive に保存できません' },
-        { status: 500 }
-      );
-    }
-
-    const drive = getDriveClient();
-    if (!drive) {
-      return NextResponse.json({ success: false, error: 'Google Drive クライアント初期化に失敗しました' }, { status: 500 });
     }
 
     const form = await req.formData();
@@ -148,6 +193,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'この案件への操作権限がありません' }, { status: 403 });
     }
 
+    const dateSlug = /^\d{4}-\d{2}-\d{2}$/.test(reportDateRaw)
+      ? reportDateRaw.replace(/-/g, '')
+      : new Date()
+          .toISOString()
+          .slice(0, 10)
+          .replace(/-/g, '');
+
+    const items: FileItem[] = [];
+    for (const f of files) {
+      const buf = Buffer.from(await f.arrayBuffer());
+      const mime = (f.type || 'image/jpeg').toLowerCase() || 'image/jpeg';
+      items.push({ buf, mime });
+    }
+
     const parentDriveId = (row.drive_folder_id as string | null)?.trim();
     if (!parentDriveId) {
       return NextResponse.json(
@@ -160,28 +219,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const nippouFolderId = await findOrCreateChildFolder(drive, parentDriveId, '日報');
+    const driveReady = isDriveConfigured() && !!getDriveClient();
 
-    const dateSlug = /^\d{4}-\d{2}-\d{2}$/.test(reportDateRaw)
-      ? reportDateRaw.replace(/-/g, '')
-      : new Date()
-          .toISOString()
-          .slice(0, 10)
-          .replace(/-/g, '');
-
-    const urls: string[] = [];
-
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      const buf = Buffer.from(await f.arrayBuffer());
-      const mime = (f.type || 'image/jpeg').toLowerCase() || 'image/jpeg';
-      const ext = extFromMime(mime);
-      const baseName = sanitizeDriveSegment(`日報_${dateSlug}_${i + 1}.${ext}`, 200);
-      const uploaded = await uploadFileToDriveFolder(drive, nippouFolderId, baseName, mime, buf);
-      urls.push(driveImagePublicUrl(uploaded.id));
+    if (!driveReady) {
+      const urls = await uploadToSupabaseReportBucket(admin, userId, dateSlug, items);
+      return NextResponse.json({ success: true, urls, storageFallback: true });
     }
 
-    return NextResponse.json({ success: true, urls });
+    const drive = getDriveClient()!;
+
+    try {
+      const nippouFolderId = await findOrCreateChildFolder(drive, parentDriveId, '日報');
+      const urls = await uploadItemsToDriveNippouFolder(drive, nippouFolderId, dateSlug, items);
+      return NextResponse.json({ success: true, urls, storageFallback: false });
+    } catch (e) {
+      if (isServiceAccountStorageQuotaError(e)) {
+        console.warn(
+          '[report-photos-upload] Google Drive に保存できませんでした（サービスアカウントの保管枠など）。Supabase Storage にフォールバックします。',
+          e
+        );
+        const urls = await uploadToSupabaseReportBucket(admin, userId, dateSlug, items);
+        return NextResponse.json({ success: true, urls, storageFallback: true });
+      }
+      throw e;
+    }
   } catch (e) {
     console.error('[report-photos-upload]', e);
     return NextResponse.json(
