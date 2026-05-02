@@ -1,8 +1,22 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { getLineLoginUrl } from '@/lib/auth';
 
 export default function LoginPage() {
+  const [companyName, setCompanyName] = useState<string | null>(null);
+  const [brandLoaded, setBrandLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/public/company-brand')
+      .then((r) => r.json())
+      .then((j: { company_name?: string | null }) => {
+        setCompanyName(j.company_name?.trim() || null);
+      })
+      .catch(() => setCompanyName(null))
+      .finally(() => setBrandLoaded(true));
+  }, []);
+
   const handleLineLogin = () => {
     window.location.href = getLineLoginUrl();
   };
@@ -24,11 +38,10 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <h1 className="text-xl font-bold mb-1 text-gray-800">ラパンリフォーム</h1>
-        <p className="text-sm text-gray-500 mb-1">業務管理システム</p>
-        <p className="text-[10px] text-gray-400 mb-8 bg-blue-50 rounded-lg px-3 py-1.5">
-          Mobile版
-        </p>
+        <h1 className="text-xl font-bold mb-1 text-gray-800">
+          {!brandLoaded ? '業務管理システム' : `${companyName || '業務管理'} 業務管理システム`}
+        </h1>
+        <p className="text-sm text-gray-500 mb-8">Mobile版</p>
 
         {/* LINEログインボタン */}
         <button
