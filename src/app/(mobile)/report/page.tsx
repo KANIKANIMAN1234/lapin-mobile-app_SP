@@ -75,26 +75,32 @@ export default function ReportPage() {
       showToast('報告内容を入力してください', 'error');
       return;
     }
+    if (!user?.id) {
+      showToast('ログイン情報が取得できません。再度ログインしてください。', 'error');
+      return;
+    }
 
     setLoading(true);
     try {
       const supabase = createClient();
-      await supabase.from('t_reports').insert({
-        user_id: user?.id ?? 'demo-user-001',
+      const { error } = await supabase.from('t_reports').insert({
+        user_id: user.id,
         report_date: date,
         title: title || `${date} 日報`,
         content,
       });
+      if (error) throw error;
       showToast('日報を送信しました', 'success');
-    } catch {
-      showToast('日報を送信しました（デモ）', 'success');
-    } finally {
-      setLoading(false);
       setProjectId('');
       setTitle('');
       setContent('');
       setDate(today());
       setPhotoUrls([]);
+    } catch (err) {
+      console.error('[ReportPage] submit', err);
+      showToast('日報の送信に失敗しました', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 

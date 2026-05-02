@@ -108,5 +108,3 @@ export function isReturnFromLineAuth(): boolean {
     hash.includes('access_token')
   );
 }
-
-export const IS_DEMO_MODE = !LIFF_ID;

@@ -11,12 +11,6 @@ import { createClient } from '@/lib/supabase';
 const WORK_TYPES = ['外壁塗装', '屋根塗装', 'キッチン', '浴室', 'トイレ', '内装', '外構', 'その他'];
 const ROUTES = ['チラシ', 'Web自然流入', 'Web広告', '新聞', '紹介', 'イベント', 'OB施策', 'LINE'];
 
-const DEMO_EMPLOYEES = [
-  { id: 'demo-user-001', name: '山田太郎', role: 'sales' },
-  { id: 'demo-user-002', name: '佐藤次郎', role: 'sales' },
-  { id: 'demo-user-003', name: '鈴木三郎', role: 'sales' },
-];
-
 function todayStr() {
   return new Date().toISOString().split('T')[0];
 }
@@ -107,16 +101,18 @@ export default function NewProjectPage() {
           .select('id, name, role, line_user_id')
           .eq('status', 'active')
           .order('name');
-        if (!error && data && data.length > 0) {
-          setEmployees(data as Employee[]);
-        } else {
-          setEmployees(DEMO_EMPLOYEES);
+        if (error) {
+          console.error('[new-project] fetchEmployees', error);
+          setEmployees([]);
+          return;
         }
-      } catch {
-        setEmployees(DEMO_EMPLOYEES);
+        setEmployees((data ?? []) as Employee[]);
+      } catch (e) {
+        console.error('[new-project] fetchEmployees', e);
+        setEmployees([]);
       }
     }
-    fetchEmployees();
+    void fetchEmployees();
   }, []);
 
   const update = (field: keyof FormState, value: string | string[]) => {
@@ -152,6 +148,10 @@ export default function NewProjectPage() {
 
   const handleConfirmSend = async () => {
     if (!modalData) return;
+    if (!user?.id) {
+      showToast('ログイン情報が取得できません。再度ログインしてください。', 'error');
+      return;
+    }
     setSubmitting(true);
     setLoading(true);
 
@@ -176,7 +176,7 @@ export default function NewProjectPage() {
           notes: modalData.memo || null,
           status: 'inquiry',
           inquiry_date: modalData.inquiryDate,
-          created_by: user?.id ?? 'demo-user-001',
+          created_by: user.id,
         })
         .select('id')
         .single();
@@ -351,7 +351,7 @@ export default function NewProjectPage() {
             type="text"
             value={form.customerName}
             onChange={(e) => update('customerName', e.target.value)}
-            placeholder="例: 山田太郎"
+            placeholder="氏名または会社名"
           />
         </div>
 
@@ -361,7 +361,7 @@ export default function NewProjectPage() {
             type="text"
             value={form.customerNameKana}
             onChange={(e) => update('customerNameKana', e.target.value)}
-            placeholder="例: ヤマダタロウ"
+            placeholder="カナ（任意）"
           />
         </div>
 

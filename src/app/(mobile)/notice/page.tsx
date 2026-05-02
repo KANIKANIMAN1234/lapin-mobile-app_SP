@@ -47,12 +47,6 @@ interface EmployeeRow {
   role: string;
 }
 
-const DEMO_EMPLOYEES: EmployeeRow[] = [
-  { id: 'demo-user-001', name: '山田太郎', role: 'sales' },
-  { id: 'demo-user-002', name: '佐藤次郎', role: 'sales' },
-  { id: 'demo-user-003', name: '鈴木三郎', role: 'sales' },
-];
-
 const CATEGORY_LABELS: Record<NoticeCategory, string> = {
   general: '連絡事項',
   notice: 'お知らせ',
@@ -134,16 +128,18 @@ export default function NoticePage() {
           .select('id, name, role')
           .eq('status', 'active')
           .order('name');
-        if (!error && data && data.length > 0) {
-          setEmployees(data as EmployeeRow[]);
-        } else {
-          setEmployees(DEMO_EMPLOYEES);
+        if (error) {
+          console.error('[NoticePage] fetchEmployees', error);
+          setEmployees([]);
+          return;
         }
-      } catch {
-        setEmployees(DEMO_EMPLOYEES);
+        setEmployees((data ?? []) as EmployeeRow[]);
+      } catch (e) {
+        console.error('[NoticePage] fetchEmployees', e);
+        setEmployees([]);
       }
     }
-    fetchEmployees();
+    void fetchEmployees();
   }, []);
 
   const filteredNotices = useMemo(() => {

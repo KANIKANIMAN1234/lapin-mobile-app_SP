@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { createClient } from '@/lib/supabase';
 
 export function AppHeader() {
-  const { user, isDemoMode } = useAuthStore();
+  const { user } = useAuthStore();
   const [companyBrand, setCompanyBrand] = useState('');
 
   const loadBrand = useCallback(async () => {
@@ -38,11 +38,6 @@ export function AppHeader() {
         </div>
 
         <div className="flex items-center gap-2">
-          {isDemoMode && (
-            <span className="text-[0.6rem] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-medium">
-              DEMO
-            </span>
-          )}
           <div className="flex items-center gap-1.5">
             {user?.avatar_url ? (
               <img
