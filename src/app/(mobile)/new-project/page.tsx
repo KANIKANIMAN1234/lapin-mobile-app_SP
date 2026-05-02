@@ -33,6 +33,17 @@ interface Employee {
   line_user_id?: string | null;
 }
 
+interface CustomerHit {
+  id: string;
+  customer_number: string | null;
+  customer_name: string;
+  customer_name_kana: string | null;
+  postal_code: string | null;
+  address: string;
+  phone: string;
+  email: string | null;
+}
+
 interface FormState {
   customerName: string;
   customerNameKana: string;
@@ -51,6 +62,8 @@ interface FormState {
 
 interface ModalData extends FormState {
   assignedName: string;
+  registrationKind: 'new' | 'existing';
+  selectedCustomerId: string | null;
 }
 
 export default function NewProjectPage() {
@@ -76,6 +89,9 @@ export default function NewProjectPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   /** 新規顧客 vs 既存顧客（リピート）。モバイルは縦並びレイアウトで表示 */
   const [registrationKind, setRegistrationKind] = useState<'new' | 'existing'>('new');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [customerHits, setCustomerHits] = useState<CustomerHit[]>([]);
+  const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [modalData, setModalData] = useState<ModalData | null>(null);
@@ -117,6 +133,60 @@ export default function NewProjectPage() {
     void fetchEmployees();
   }, []);
 
+  // 既存顧客: 氏名で m_customers を検索
+  useEffect(() => {
+    if (registrationKind !== 'existing') {
+      setCustomerHits([]);
+      setCustomerSearchLoading(false);
+      return;
+    }
+    const q = form.customerName.trim();
+    if (q.length < 1) {
+      setCustomerHits([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void (async () => {
+        setCustomerSearchLoading(true);
+        try {
+          const supabase = createClient();
+          const { data, error } = await supabase
+            .from('m_customers')
+            .select(
+              'id, customer_number, customer_name, customer_name_kana, postal_code, address, phone, email'
+            )
+            .is('deleted_at', null)
+            .ilike('customer_name', `%${q}%`)
+            .order('customer_number', { ascending: false })
+            .limit(25);
+          if (error) throw error;
+          setCustomerHits((data ?? []) as CustomerHit[]);
+        } catch (e) {
+          console.error('[new-project] customer search', e);
+          setCustomerHits([]);
+        } finally {
+          setCustomerSearchLoading(false);
+        }
+      })();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [registrationKind, form.customerName]);
+
+  const applyCustomerPick = (customerId: string) => {
+    const c = customerHits.find((h) => h.id === customerId);
+    if (!c) return;
+    setSelectedCustomerId(customerId);
+    setForm((prev) => ({
+      ...prev,
+      customerName: c.customer_name,
+      customerNameKana: c.customer_name_kana ?? '',
+      zip: c.postal_code ?? '',
+      address: c.address,
+      phone: c.phone,
+      email: c.email ?? '',
+    }));
+  };
+
   const update = (field: keyof FormState, value: string | string[]) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -132,7 +202,15 @@ export default function NewProjectPage() {
 
 
   const validate = (): boolean => {
-    if (!form.customerName) { showToast('顧客名を入力してください', 'error'); return false; }
+    if (registrationKind === 'existing') {
+      if (!selectedCustomerId) {
+        showToast('既存顧客をプルダウンから選択してください', 'error');
+        return false;
+      }
+    } else if (!form.customerName) {
+      showToast('顧客名を入力してください', 'error');
+      return false;
+    }
     if (!form.address) { showToast('住所を入力してください', 'error'); return false; }
     if (!form.phone) { showToast('電話番号を入力してください', 'error'); return false; }
     if (form.workTypes.length === 0) { showToast('工事種別を選択してください', 'error'); return false; }
@@ -144,7 +222,12 @@ export default function NewProjectPage() {
   const handleRegister = () => {
     if (!validate()) return;
     const assignedEmployee = employees.find((e) => e.id === form.assigned);
-    setModalData({ ...form, assignedName: assignedEmployee?.name ?? '' });
+    setModalData({
+      ...form,
+      assignedName: assignedEmployee?.name ?? '',
+      registrationKind,
+      selectedCustomerId: registrationKind === 'existing' ? selectedCustomerId : null,
+    });
     setShowModal(true);
   };
 
@@ -157,51 +240,64 @@ export default function NewProjectPage() {
     setSubmitting(true);
     setLoading(true);
 
-    try {
-      const supabase = createClient();
+    const supabase = createClient();
 
-      // ── 案件をDBに登録（project_numberはオプション扱い）──────
-      const { data: insertedData, error: insertError } = await supabase
-        .from('t_projects')
-        .insert({
-          customer_name: modalData.customerName,
-          customer_name_kana: modalData.customerNameKana || null,
-          postal_code: modalData.zip || null,
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        showToast('ログインの有効期限が切れている可能性があります。再度ログインしてからお試しください。', 'error');
+        return;
+      }
+
+      const regRes = await fetch('/api/register-project', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          registrationKind: modalData.registrationKind,
+          selectedCustomerId: modalData.selectedCustomerId,
+          customerName: modalData.customerName,
+          customerNameKana: modalData.customerNameKana || null,
+          postalCode: modalData.zip || null,
           address: modalData.address,
           phone: modalData.phone,
           email: modalData.email || null,
-          work_description: modalData.workDesc || modalData.workTypes.join(','),
-          work_type: modalData.workTypes,
-          estimated_amount: Number(modalData.amount),
-          acquisition_route: modalData.route,
-          assigned_to: modalData.assigned || null,
+          workDescription: modalData.workDesc || modalData.workTypes.join(','),
+          workTypes: modalData.workTypes,
+          estimatedAmount: Number(modalData.amount),
+          acquisitionRoute: modalData.route,
+          assignedTo: modalData.assigned || null,
+          inquiryDate: modalData.inquiryDate,
           notes: modalData.memo || null,
-          status: 'inquiry',
-          inquiry_date: modalData.inquiryDate,
-          created_by: user.id,
-        })
-        .select('id')
-        .single();
+        }),
+      });
+      const regJson = (await regRes.json()) as {
+        success?: boolean;
+        projectId?: string;
+        customerId?: string;
+        error?: string;
+      };
+      if (!regRes.ok || !regJson.success || !regJson.projectId) {
+        showToast(regJson.error ?? `案件の登録に失敗しました (${regRes.status})`, 'error');
+        return;
+      }
+      const projectId = regJson.projectId;
 
-      if (insertError) throw insertError;
-
-      // ── LINE通知を送信 ──────────────────────────────────────
       const assignedEmployee = employees.find((e) => e.id === modalData.assigned);
       const adminEmployees = employees.filter((e) => e.role === 'admin' && e.line_user_id);
 
-      console.log('[new-project] line-notify payload:', {
-        customerName: modalData.customerName,
-        assignedEmployee: assignedEmployee?.name,
-        assignedLineUserId: assignedEmployee?.line_user_id,
-        adminCount: adminEmployees.length,
-        insertedId: (insertedData as { id?: string })?.id,
-      });
-
+      let lineOk = true;
       try {
         const notifyRes = await fetch('/api/line-notify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            projectNumber: undefined,
             customerName: modalData.customerName,
             address: modalData.address,
             workDescription: modalData.workDesc || undefined,
@@ -214,16 +310,59 @@ export default function NewProjectPage() {
             adminLineUserIds: adminEmployees.map((e) => e.line_user_id!),
           }),
         });
-        const notifyJson = await notifyRes.json();
-        console.log('[new-project] line-notify result:', notifyJson);
-        if (!notifyRes.ok || !notifyJson.success) {
-          showToast('案件を登録しました（LINE通知に失敗: ' + (notifyJson.error ?? notifyRes.status) + '）', 'error');
-        } else {
-          showToast('案件を登録し、LINEに通知しました', 'success');
+        const notifyJson = (await notifyRes.json()) as { success?: boolean; error?: string };
+        lineOk = notifyRes.ok && !!notifyJson.success;
+        if (!lineOk) {
+          showToast('LINE通知に失敗: ' + (notifyJson.error ?? String(notifyRes.status)), 'error');
         }
       } catch (notifyErr) {
+        lineOk = false;
         console.error('[new-project] line-notify fetch error:', notifyErr);
-        showToast('案件を登録しました（LINE通知に失敗しました）', 'error');
+        showToast('LINE通知に失敗しました', 'error');
+      }
+
+      let driveOk = true;
+      let driveSkipped = false;
+      if (accessToken) {
+        try {
+          const driveRes = await fetch('/api/setup-project-drive', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({
+              projectId,
+              mode: modalData.registrationKind,
+            }),
+          });
+          const driveJson = (await driveRes.json()) as {
+            success?: boolean;
+            skipped?: boolean;
+            error?: string;
+          };
+          driveSkipped = !!driveJson.skipped;
+          driveOk = !!(driveSkipped || (driveRes.ok && driveJson.success));
+          if (!driveOk) {
+            showToast('Google Drive フォルダ作成に失敗: ' + (driveJson.error ?? driveRes.status), 'error');
+          }
+        } catch (driveErr) {
+          driveOk = false;
+          console.error('[new-project] setup-project-drive', driveErr);
+          showToast('Google Drive 連携でエラーが発生しました', 'error');
+        }
+      } else {
+        driveOk = false;
+      }
+
+      if (lineOk) {
+        if (!accessToken) {
+          showToast('案件を登録しました（セッション切れのため Drive をスキップ）', 'success');
+        } else if (driveOk && driveSkipped) {
+          showToast('案件を登録・通知しました（Drive は未設定のためスキップ）', 'success');
+        } else if (driveOk) {
+          showToast('案件を登録し、LINE 通知・フォルダ作成が完了しました', 'success');
+        }
       }
     } catch (err) {
       console.error('[new-project] insert error:', err);
@@ -232,10 +371,23 @@ export default function NewProjectPage() {
       setLoading(false);
       setShowModal(false);
       setSubmitting(false);
+      setRegistrationKind('new');
+      setSelectedCustomerId(null);
+      setCustomerHits([]);
       setForm({
-        customerName: '', customerNameKana: '', zip: '', address: '',
-        phone: '', email: '', workDesc: '', workTypes: [], amount: '',
-        inquiryDate: todayStr(), route: '', assigned: '', memo: '',
+        customerName: '',
+        customerNameKana: '',
+        zip: '',
+        address: '',
+        phone: '',
+        email: '',
+        workDesc: '',
+        workTypes: [],
+        amount: '',
+        inquiryDate: todayStr(),
+        route: '',
+        assigned: '',
+        memo: '',
       });
     }
   };
@@ -351,13 +503,40 @@ export default function NewProjectPage() {
           <label>登録区分</label>
           <select
             value={registrationKind}
-            onChange={(e) => setRegistrationKind(e.target.value as 'new' | 'existing')}
+            onChange={(e) => {
+              const v = e.target.value as 'new' | 'existing';
+              setRegistrationKind(v);
+              if (v === 'new') setSelectedCustomerId(null);
+            }}
             className="w-full"
           >
             <option value="new">新規顧客</option>
             <option value="existing">既存リピート</option>
           </select>
         </div>
+
+        {registrationKind === 'existing' && (
+          <div className="form-field">
+            <label>顧客の選択（候補）</label>
+            <select
+              value={selectedCustomerId ?? ''}
+              onChange={(e) => applyCustomerPick(e.target.value)}
+              className="w-full"
+              disabled={customerHits.length === 0 && !customerSearchLoading}
+            >
+              <option value="">
+                {customerSearchLoading ? '検索中…' : customerHits.length === 0 ? '氏名を入力すると候補が表示されます' : '候補から選択してください'}
+              </option>
+              {customerHits.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.customer_number ?? ''} {c.customer_name} — {c.address.slice(0, 28)}
+                  {c.address.length > 28 ? '…' : ''}
+                </option>
+              ))}
+            </select>
+            <p className="text-[0.65rem] text-gray-500 mt-1">選択すると住所・電話などが自動入力されます。</p>
+          </div>
+        )}
 
         <div className="form-field">
           <label>顧客名 *</label>

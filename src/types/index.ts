@@ -49,7 +49,6 @@ export interface Project {
   planned_budget?: number;
   actual_cost?: number;
   notes?: string;
-  created_by?: string | null;
   created_at: string;
   updated_at: string;
 }
