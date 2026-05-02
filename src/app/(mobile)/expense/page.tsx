@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/stores/authStore';
-import { useProjects } from '@/hooks/useProjects';
+import { useContractedProjects } from '@/hooks/useProjects';
 import { useCreateExpense } from '@/hooks/useExpenses';
 import { Toast } from '@/components/ui/Toast';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
@@ -15,7 +15,7 @@ const today = () => new Date().toISOString().split('T')[0];
 
 export default function ExpensePage() {
   const { user } = useAuthStore();
-  const { data: projects = [] } = useProjects();
+  const { data: projects = [] } = useContractedProjects();
   const createExpense = useCreateExpense();
   const { toasts, showToast, removeToast } = useToast();
 
