@@ -87,23 +87,51 @@ export default function ReportPage() {
     setLoading(true);
     try {
       const supabase = createClient();
-      const { error } = await supabase.from('t_reports').insert({
+      const titleFinal = title.trim() || `${date} 日報`;
+      const row = {
         user_id: user.id,
         project_id: projectId,
         report_date: date,
-        title: title || `${date} 日報`,
+        title: titleFinal,
         content,
-      });
-      if (error) throw error;
-      showToast('日報を送信しました', 'success');
+      };
+
+      // 同一ユーザー×案件×日付は DB で 1 件のみ。再送信は更新扱いにする。
+      const { data: existing, error: selErr } = await supabase
+        .from('t_reports')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('project_id', projectId)
+        .eq('report_date', date)
+        .maybeSingle();
+      if (selErr) throw selErr;
+
+      if (existing?.id) {
+        const { error } = await supabase
+          .from('t_reports')
+          .update({ title: titleFinal, content })
+          .eq('id', existing.id);
+        if (error) throw error;
+        showToast('日報を更新しました', 'success');
+      } else {
+        const { error } = await supabase.from('t_reports').insert(row);
+        if (error) throw error;
+        showToast('日報を送信しました', 'success');
+      }
       setProjectId('');
       setTitle('');
       setContent('');
       setDate(today());
       setPhotoUrls([]);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('[ReportPage] submit', err);
-      showToast('日報の送信に失敗しました', 'error');
+      const code =
+        err && typeof err === 'object' && 'code' in err ? String((err as { code?: string }).code) : '';
+      if (code === '23505') {
+        showToast('この日付・案件の日報はすでに登録されています', 'error');
+      } else {
+        showToast('日報の送信に失敗しました', 'error');
+      }
     } finally {
       setLoading(false);
     }
@@ -127,7 +155,9 @@ export default function ReportPage() {
 
         <div className="form-field">
           <label>関連案件 *</label>
-          <p className="text-xs text-gray-500 mb-1">PCの案件詳細「日報」タブに表示されます</p>
+          <p className="text-xs text-gray-500 mb-1">
+            PCの案件詳細「日報」タブに表示されます。同じ日・同じ案件で再送信すると内容が上書きされます。
+          </p>
           <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
             <option value="">案件を選択してください</option>
             {projects.map((p) => (
