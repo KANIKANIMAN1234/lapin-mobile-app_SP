@@ -27,9 +27,9 @@ type FileItem = { buf: Buffer; mime: string };
 
 /** サービスアカウントにマイドライブの保管枠がない場合のユーザー向け説明 */
 const DRIVE_SA_QUOTA_MESSAGE =
-  'Google Drive に写真を保存できませんでした。サービスアカウントにはマイドライブのストレージ枠がないため、' +
-  'ルートや案件フォルダを「共有ドライブ」上に置き、サービスアカウントをその共有ドライブのメンバー（コンテンツ管理者など）に追加してください。' +
-  '設定は管理者が Google Workspace / Drive で行ってください。';
+  'Google Drive に写真を保存できませんでした。次のいずれかが必要です。(1) ルート・案件フォルダを「共有ドライブ」上に置き、サービスアカウントをメンバーに追加する。' +
+  '(2) Workspace でドメイン全体の委任を有効にし、Vercel に GOOGLE_DRIVE_IMPERSONATE_USER＝なりすまし先のユーザメールを設定する。' +
+  'いずれも管理者が Google Workspace / デプロイ環境で設定してください。';
 
 function createAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

@@ -27,9 +27,29 @@ export function isDriveConfigured(): boolean {
   return !!getCredentials();
 }
 
+/**
+ * Google Workspace でドメイン全体の委任を有効にしている場合、
+ * GOOGLE_DRIVE_IMPERSONATE_USER に「なりすまし先」のユーザメールを設定すると、
+ * そのユーザのマイドライブ枠で API が動作し、共有ドライブに移さなくても保存できることがあります。
+ */
 export function getDriveClient(): drive_v3.Drive | null {
   const credentials = getCredentials();
   if (!credentials) return null;
+
+  const subject = process.env.GOOGLE_DRIVE_IMPERSONATE_USER?.trim();
+  const clientEmail = credentials.client_email as string | undefined;
+  const privateKey = credentials.private_key as string | undefined;
+
+  if (clientEmail && privateKey) {
+    const auth = new google.auth.JWT({
+      email: clientEmail,
+      key: privateKey,
+      scopes: ['https://www.googleapis.com/auth/drive'],
+      ...(subject ? { subject } : {}),
+    });
+    return google.drive({ version: 'v3', auth });
+  }
+
   const auth = new google.auth.GoogleAuth({
     credentials,
     scopes: ['https://www.googleapis.com/auth/drive'],
