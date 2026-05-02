@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useProjects } from '@/hooks/useProjects';
 import { useAuthStore } from '@/stores/authStore';
 import { createClient } from '@/lib/supabase';
@@ -9,17 +9,6 @@ import { Toast } from '@/components/ui/Toast';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { useToast } from '@/hooks/useToast';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
-
-const WORK_TYPES_MAP: Record<string, string[]> = {
-  '外壁塗装': ['下塗り', '中塗り', '上塗り', '養生'],
-  '屋根塗装': ['洗浄', '下塗り', '上塗り'],
-  'キッチン': ['解体', '給排水', '設備取付', '仕上げ'],
-  '浴室': ['解体', '防水', '設備取付', '仕上げ'],
-  'トイレ': ['解体', '設備取付', '仕上げ'],
-  '内装': ['解体', '下地', '壁紙', '床材', '仕上げ'],
-  '外構': ['基礎', '舗装', 'フェンス', '植栽'],
-  'その他': ['その他'],
-};
 
 const today = () => new Date().toISOString().split('T')[0];
 
@@ -43,8 +32,6 @@ export default function SitePhotoPage() {
   const [projectId, setProjectId] = useState('');
   const [photoDate, setPhotoDate] = useState(today());
   const [photoPhase, setPhotoPhase] = useState('');
-  const [workType, setWorkType] = useState('');
-  const [availableWorkTypes, setAvailableWorkTypes] = useState<string[]>([]);
   const [memo, setMemo] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [formatting, setFormatting] = useState(false);
@@ -64,6 +51,18 @@ export default function SitePhotoPage() {
     };
   }, []);
 
+  const selectedProject = useMemo(
+    () => projects.find((p) => p.id === projectId),
+    [projects, projectId]
+  );
+
+  /** 案件マスタの work_type をそのまま表示・ファイル名メタに利用 */
+  const workTypeLabel = useMemo(() => {
+    const w = selectedProject?.work_type;
+    if (!w?.length) return '';
+    return w.filter((s) => typeof s === 'string' && s.trim()).join('、');
+  }, [selectedProject]);
+
   const { isRecording, voiceStatus, toggleVoice, transcribing } = useVoiceInput({
     currentText: memo,
     onTextUpdate: setMemo,
@@ -72,15 +71,6 @@ export default function SitePhotoPage() {
 
   const handleProjectChange = (id: string) => {
     setProjectId(id);
-    const project = projects.find((p) => p.id === id);
-    if (project && project.work_type.length > 0) {
-      const types = project.work_type.flatMap((wt) => WORK_TYPES_MAP[wt] ?? [wt]);
-      setAvailableWorkTypes([...new Set(types)]);
-      setWorkType('');
-    } else {
-      setAvailableWorkTypes([]);
-      setWorkType('');
-    }
   };
 
   const handlePhotoSelect = (files: FileList) => {
@@ -118,7 +108,7 @@ export default function SitePhotoPage() {
       for (let i = 0; i < photos.length; i++) {
         const dataUrl = photos[i];
         const fakeFileId = `mobile_${Date.now()}_${i}`;
-        const meta = [photoDate, photoPhase, workType, memo.replace(/\s+/g, ' ').trim()].filter(Boolean).join('_');
+        const meta = [photoDate, photoPhase, workTypeLabel, memo.replace(/\s+/g, ' ').trim()].filter(Boolean).join('_');
         const fileName = (meta || `site_photo_${i}`).slice(0, 200);
         const { error } = await supabase.from('t_photos').insert({
           project_id: projectId,
@@ -135,10 +125,8 @@ export default function SitePhotoPage() {
       setProjectId('');
       setPhotoDate(today());
       setPhotoPhase(phaseOptions[0] ?? '');
-      setWorkType('');
       setMemo('');
       setPhotos([]);
-      setAvailableWorkTypes([]);
     } catch (e) {
       showToast('登録に失敗しました: ' + String(e), 'error');
     } finally {
@@ -190,18 +178,19 @@ export default function SitePhotoPage() {
 
         <div className="form-field">
           <label>工事種別</label>
-          <select
-            value={workType}
-            onChange={(e) => setWorkType(e.target.value)}
-            disabled={availableWorkTypes.length === 0}
-          >
-            <option value="">
-              {availableWorkTypes.length === 0 ? '案件を選択してください' : '種別を選択'}
-            </option>
-            {availableWorkTypes.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
+          <p className="text-xs text-gray-500 mb-1">選択中の案件に登録されている工事種別です（自動表示）。</p>
+          <input
+            type="text"
+            readOnly
+            tabIndex={-1}
+            value={
+              !projectId
+                ? ''
+                : workTypeLabel || '（案件に工事種別が未設定です）'
+            }
+            placeholder="案件を選択してください"
+            className="bg-gray-50 text-gray-800 cursor-default"
+          />
         </div>
 
         <div className="form-field">
