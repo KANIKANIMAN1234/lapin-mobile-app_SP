@@ -30,6 +30,9 @@ export interface Project {
   customer_name_kana?: string;
   postal_code?: string;
   address: string;
+  /** ジオコード結果（PC・スマホマップ共通） */
+  lat?: number | null;
+  lng?: number | null;
   phone: string;
   email?: string;
   work_description: string;

@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { href: '/attendance', icon: 'schedule', label: '出退勤', color: 'text-line-green' },
   { href: '/report', icon: 'description', label: '日報', color: 'text-line-green' },
   { href: '/site-photo', icon: 'photo_library', label: '現場写真', color: 'text-line-green' },
+  { href: '/map', icon: 'map', label: '地図', color: 'text-line-green' },
   { href: '/history', icon: 'receipt_long', label: '履歴', color: 'text-line-green' },
   { href: '/summary', icon: 'pie_chart', label: '集計', color: 'text-line-green' },
 ];
