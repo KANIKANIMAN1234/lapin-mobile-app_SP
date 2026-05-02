@@ -11,14 +11,17 @@ import { createClient } from '@/lib/supabase';
 
 const today = () => new Date().toISOString().split('T')[0];
 
-const REPORT_PHOTOS_BUCKET = 'report-photos';
-
-async function uploadReportPhotoDataUrls(
-  supabase: ReturnType<typeof createClient>,
-  userId: string,
+/** 案件 Google Drive の「日報」フォルダへ保存し、表示用 URL 配列を返す */
+async function uploadReportPhotosToDrive(
+  accessToken: string,
+  projectId: string,
+  reportDate: string,
   dataUrls: string[],
 ): Promise<string[]> {
-  const out: string[] = [];
+  if (dataUrls.length === 0) return [];
+  const fd = new FormData();
+  fd.append('projectId', projectId);
+  fd.append('reportDate', reportDate);
   for (let i = 0; i < dataUrls.length; i++) {
     const res = await fetch(dataUrls[i]);
     const blob = await res.blob();
@@ -27,19 +30,21 @@ async function uploadReportPhotoDataUrls(
       ? 'png'
       : mime.includes('webp')
         ? 'webp'
-        : mime.includes('heic')
+        : mime.includes('heic') || mime.includes('heif')
           ? 'heic'
           : 'jpg';
-    const path = `${userId}/reports/${Date.now()}_${i}.${ext}`;
-    const { error } = await supabase.storage.from(REPORT_PHOTOS_BUCKET).upload(path, blob, {
-      contentType: mime,
-      upsert: false,
-    });
-    if (error) throw error;
-    const { data } = supabase.storage.from(REPORT_PHOTOS_BUCKET).getPublicUrl(path);
-    out.push(data.publicUrl);
+    fd.append('file', blob, `photo_${i}.${ext}`);
   }
-  return out;
+  const apiRes = await fetch('/api/report-photos-upload', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: fd,
+  });
+  const json = (await apiRes.json()) as { success?: boolean; urls?: string[]; error?: string };
+  if (!apiRes.ok || !json.success || !Array.isArray(json.urls)) {
+    throw new Error(json.error || '写真の Drive アップロードに失敗しました');
+  }
+  return json.urls;
 }
 
 async function callFormatText(text: string, promptKey: string): Promise<string> {
@@ -118,9 +123,19 @@ export default function ReportPage() {
     setLoading(true);
     try {
       const supabase = createClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        showToast('ログインセッションが無効です。再度ログインしてください。', 'error');
+        return;
+      }
+
       const titleFinal = title.trim() || `${date} 日報`;
       const uploadedUrls =
-        photoUrls.length > 0 ? await uploadReportPhotoDataUrls(supabase, user.id, photoUrls) : null;
+        photoUrls.length > 0
+          ? await uploadReportPhotosToDrive(session.access_token, projectId, date, photoUrls)
+          : null;
 
       const row = {
         user_id: user.id,
@@ -163,10 +178,13 @@ export default function ReportPage() {
       setPhotoUrls([]);
     } catch (err: unknown) {
       console.error('[ReportPage] submit', err);
+      const msg = err instanceof Error ? err.message : '';
       const code =
         err && typeof err === 'object' && 'code' in err ? String((err as { code?: string }).code) : '';
       if (code === '23505') {
         showToast('この日付・案件の日報はすでに登録されています', 'error');
+      } else if (msg) {
+        showToast(msg, 'error');
       } else {
         showToast('日報の送信に失敗しました', 'error');
       }
@@ -194,7 +212,7 @@ export default function ReportPage() {
         <div className="form-field">
           <label>関連案件 *</label>
           <p className="text-xs text-gray-500 mb-1">
-            PCの案件詳細「日報」タブに表示されます。同じ日・同じ案件で再送信すると内容が上書きされます。
+            PCの案件詳細「日報」タブに表示されます。添付写真は案件の Google Drive 内の「日報」フォルダに保存されます。同じ日・同じ案件で再送信すると本文は上書きされます（写真を付けたときのみ写真も更新）。
           </p>
           <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
             <option value="">案件を選択してください</option>

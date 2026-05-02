@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream';
 import { google, drive_v3 } from 'googleapis';
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -103,6 +104,32 @@ export async function ensureFolderPathFromTemplate(
 
 export function folderWebUrl(folderId: string): string {
   return `https://drive.google.com/drive/folders/${folderId}`;
+}
+
+/** 案件フォルダ等に画像・ファイルを保存（メディアは Readable でアップロード） */
+export async function uploadFileToDriveFolder(
+  drive: drive_v3.Drive,
+  parentFolderId: string,
+  fileName: string,
+  mimeType: string,
+  buffer: Buffer
+): Promise<{ id: string; webViewLink?: string | null }> {
+  const safeName = sanitizeDriveSegment(fileName, 200);
+  const res = await drive.files.create({
+    requestBody: {
+      name: safeName,
+      parents: [parentFolderId],
+    },
+    media: {
+      mimeType,
+      body: Readable.from(buffer),
+    },
+    fields: 'id, webViewLink',
+    supportsAllDrives: true,
+  });
+  const id = res.data.id;
+  if (!id) throw new Error('Drive ファイルIDが取得できませんでした');
+  return { id, webViewLink: res.data.webViewLink };
 }
 
 export function parseFolderTemplateJson(raw: string | null | undefined): string[] {
