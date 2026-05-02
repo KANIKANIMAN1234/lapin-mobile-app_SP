@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { Toast } from '@/components/ui/Toast';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
@@ -10,16 +10,6 @@ import { createClient } from '@/lib/supabase';
 
 const WORK_TYPES = ['外壁塗装', '屋根塗装', 'キッチン', '浴室', 'トイレ', '内装', '外構', 'その他'];
 const ROUTES = ['チラシ', 'Web自然流入', 'Web広告', '新聞', '紹介', 'イベント', 'OB施策', 'LINE'];
-
-const PROJECT_STATUS_LABEL: Record<string, string> = {
-  inquiry: '問い合わせ',
-  estimate: '見積',
-  followup_status: 'フォロー中',
-  contract: '契約',
-  in_progress: '施工中',
-  completed: '完工',
-  lost: '失注',
-};
 
 function todayStr() {
   return new Date().toISOString().split('T')[0];
@@ -43,25 +33,6 @@ interface Employee {
   line_user_id?: string | null;
 }
 
-interface CustomerPickRow {
-  id: string;
-  customer_number: string | null;
-  customer_name: string;
-  customer_name_kana: string | null;
-  postal_code: string | null;
-  address: string;
-  phone: string;
-  email: string | null;
-}
-
-interface ProjectHistoryRow {
-  id: string;
-  project_number: string | null;
-  status: string;
-  inquiry_date: string;
-  work_description: string;
-}
-
 interface FormState {
   customerName: string;
   customerNameKana: string;
@@ -80,9 +51,6 @@ interface FormState {
 
 interface ModalData extends FormState {
   assignedName: string;
-  customerMode: 'new' | 'existing';
-  selectedCustomerId: string | null;
-  selectedCustomerNumber: string | null;
 }
 
 export default function NewProjectPage() {
@@ -106,17 +74,13 @@ export default function NewProjectPage() {
   });
 
   const [employees, setEmployees] = useState<Employee[]>([]);
+  /** 新規顧客 vs 既存顧客（リピート）。モバイルは縦並びレイアウトで表示 */
+  const [registrationKind, setRegistrationKind] = useState<'new' | 'existing'>('new');
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [modalData, setModalData] = useState<ModalData | null>(null);
   const [formatting, setFormatting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  const [customerMode, setCustomerMode] = useState<'new' | 'existing'>('new');
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
-  const [selectedCustomerNumber, setSelectedCustomerNumber] = useState<string | null>(null);
-  const [customerSuggestions, setCustomerSuggestions] = useState<CustomerPickRow[]>([]);
-  const [projectHistory, setProjectHistory] = useState<ProjectHistoryRow[]>([]);
 
   const {
     isRecording: isRecordingDesc,
@@ -153,75 +117,6 @@ export default function NewProjectPage() {
     void fetchEmployees();
   }, []);
 
-  const fetchProjectHistory = useCallback(async (customerId: string) => {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from('t_projects')
-      .select('id, project_number, status, inquiry_date, work_description')
-      .eq('customer_id', customerId)
-      .is('deleted_at', null)
-      .order('inquiry_date', { ascending: false })
-      .limit(25);
-    if (error) {
-      console.error('[new-project] fetchProjectHistory', error);
-      setProjectHistory([]);
-      return;
-    }
-    setProjectHistory((data ?? []) as ProjectHistoryRow[]);
-  }, []);
-
-  useEffect(() => {
-    if (customerMode !== 'existing') {
-      setCustomerSuggestions([]);
-      return;
-    }
-    const q = form.customerName.trim();
-    if (q.length < 1) {
-      setCustomerSuggestions([]);
-      return;
-    }
-    const timer = window.setTimeout(async () => {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('m_customers')
-        .select(
-          'id, customer_number, customer_name, customer_name_kana, postal_code, address, phone, email',
-        )
-        .is('deleted_at', null)
-        .or(`customer_name.ilike.%${q}%,customer_name_kana.ilike.%${q}%,customer_number.ilike.%${q}%`)
-        .order('customer_name')
-        .limit(20);
-      if (error) {
-        console.error('[new-project] customer search', error);
-        setCustomerSuggestions([]);
-        return;
-      }
-      setCustomerSuggestions((data ?? []) as CustomerPickRow[]);
-    }, 320);
-    return () => window.clearTimeout(timer);
-  }, [form.customerName, customerMode]);
-
-  const applyCustomerRow = (row: CustomerPickRow) => {
-    setSelectedCustomerId(row.id);
-    setSelectedCustomerNumber(row.customer_number);
-    setForm((prev) => ({
-      ...prev,
-      customerName: row.customer_name,
-      customerNameKana: row.customer_name_kana ?? '',
-      zip: row.postal_code ?? '',
-      address: row.address,
-      phone: row.phone,
-      email: row.email ?? '',
-    }));
-    void fetchProjectHistory(row.id);
-  };
-
-  const clearCustomerLink = () => {
-    setSelectedCustomerId(null);
-    setSelectedCustomerNumber(null);
-    setProjectHistory([]);
-  };
-
   const update = (field: keyof FormState, value: string | string[]) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -237,10 +132,6 @@ export default function NewProjectPage() {
 
 
   const validate = (): boolean => {
-    if (customerMode === 'existing' && !selectedCustomerId) {
-      showToast('既存顧客の場合、一覧から顧客を選択してください', 'error');
-      return false;
-    }
     if (!form.customerName) { showToast('顧客名を入力してください', 'error'); return false; }
     if (!form.address) { showToast('住所を入力してください', 'error'); return false; }
     if (!form.phone) { showToast('電話番号を入力してください', 'error'); return false; }
@@ -253,13 +144,7 @@ export default function NewProjectPage() {
   const handleRegister = () => {
     if (!validate()) return;
     const assignedEmployee = employees.find((e) => e.id === form.assigned);
-    setModalData({
-      ...form,
-      assignedName: assignedEmployee?.name ?? '',
-      customerMode,
-      selectedCustomerId,
-      selectedCustomerNumber,
-    });
+    setModalData({ ...form, assignedName: assignedEmployee?.name ?? '' });
     setShowModal(true);
   };
 
@@ -275,52 +160,10 @@ export default function NewProjectPage() {
     try {
       const supabase = createClient();
 
-      let customerIdToUse: string;
-
-      if (modalData.customerMode === 'new') {
-        const { data: newCust, error: custErr } = await supabase
-          .from('m_customers')
-          .insert({
-            customer_name: modalData.customerName,
-            customer_name_kana: modalData.customerNameKana || null,
-            postal_code: modalData.zip || null,
-            address: modalData.address,
-            phone: modalData.phone,
-            email: modalData.email || null,
-            created_by: user.id,
-          })
-          .select('id')
-          .single();
-        if (custErr) throw custErr;
-        customerIdToUse = (newCust as { id: string }).id;
-      } else {
-        if (!modalData.selectedCustomerId) {
-          showToast('顧客が選択されていません', 'error');
-          setLoading(false);
-          setSubmitting(false);
-          return;
-        }
-        customerIdToUse = modalData.selectedCustomerId;
-        const { error: updErr } = await supabase
-          .from('m_customers')
-          .update({
-            customer_name: modalData.customerName,
-            customer_name_kana: modalData.customerNameKana || null,
-            postal_code: modalData.zip || null,
-            address: modalData.address,
-            phone: modalData.phone,
-            email: modalData.email || null,
-          })
-          .eq('id', customerIdToUse);
-        if (updErr) throw updErr;
-      }
-
-      const assignedToUser = modalData.assigned || user.id;
-
+      // ── 案件をDBに登録（project_numberはオプション扱い）──────
       const { data: insertedData, error: insertError } = await supabase
         .from('t_projects')
         .insert({
-          customer_id: customerIdToUse,
           customer_name: modalData.customerName,
           customer_name_kana: modalData.customerNameKana || null,
           postal_code: modalData.zip || null,
@@ -331,7 +174,7 @@ export default function NewProjectPage() {
           work_type: modalData.workTypes,
           estimated_amount: Number(modalData.amount),
           acquisition_route: modalData.route,
-          assigned_to: assignedToUser,
+          assigned_to: modalData.assigned || null,
           notes: modalData.memo || null,
           status: 'inquiry',
           inquiry_date: modalData.inquiryDate,
@@ -394,8 +237,6 @@ export default function NewProjectPage() {
         phone: '', email: '', workDesc: '', workTypes: [], amount: '',
         inquiryDate: todayStr(), route: '', assigned: '', memo: '',
       });
-      setCustomerMode('new');
-      clearCustomerLink();
     }
   };
 
@@ -467,12 +308,6 @@ export default function NewProjectPage() {
                   }}
                 />
                 <p>📋 <strong>新規案件登録</strong></p>
-                <p className="text-xs text-gray-600 mt-1">
-                  顧客: {modalData.customerMode === 'existing' ? '既存（リピート）' : '新規'}
-                  {modalData.selectedCustomerNumber
-                    ? ` ／ 顧客管理番号 ${modalData.selectedCustomerNumber}`
-                    : ''}
-                </p>
                 <p>顧客名: {modalData.customerName}{modalData.customerNameKana ? `（${modalData.customerNameKana}）` : ''}</p>
                 <p>住所: {modalData.address}</p>
                 <p>電話: {modalData.phone}</p>
@@ -513,111 +348,60 @@ export default function NewProjectPage() {
         </h3>
 
         <div className="form-field">
-          <label>登録区分</label>
-          <div className="flex gap-3 mt-1">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <label className="mb-2 block">登録区分</label>
+          <div className="flex flex-col gap-3">
+            <label
+              className={`flex w-full cursor-pointer items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors ${
+                registrationKind === 'new'
+                  ? 'border-line-green bg-[var(--line-green-light)]'
+                  : 'border-gray-200 bg-white'
+              }`}
+            >
               <input
                 type="radio"
-                name="customerMode"
-                checked={customerMode === 'new'}
-                onChange={() => {
-                  setCustomerMode('new');
-                  clearCustomerLink();
-                }}
+                name="registration-kind"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[#06C755]"
+                checked={registrationKind === 'new'}
+                onChange={() => setRegistrationKind('new')}
               />
-              新規顧客（初回のご依頼）
+              <span className="min-w-0 flex-1 text-sm leading-snug text-gray-900">
+                新規顧客<span className="text-gray-600">（初回のご依頼）</span>
+              </span>
             </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <label
+              className={`flex w-full cursor-pointer items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors ${
+                registrationKind === 'existing'
+                  ? 'border-line-green bg-[var(--line-green-light)]'
+                  : 'border-gray-200 bg-white'
+              }`}
+            >
               <input
                 type="radio"
-                name="customerMode"
-                checked={customerMode === 'existing'}
-                onChange={() => {
-                  setCustomerMode('existing');
-                  clearCustomerLink();
-                }}
+                name="registration-kind"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[#06C755]"
+                checked={registrationKind === 'existing'}
+                onChange={() => setRegistrationKind('existing')}
               />
-              既存顧客（追加・リピート工事）は名前を入力して候補から選択
+              <div className="min-w-0 flex-1 text-sm leading-snug text-gray-900">
+                <span className="font-medium">既存顧客</span>
+                <span className="text-gray-600">（追加・リピート工事）</span>
+                <p className="mt-1.5 text-xs leading-relaxed text-gray-500">
+                  下の「氏名または会社名」に入力すると候補が表示されます。候補から選択してください。
+                </p>
+              </div>
             </label>
           </div>
         </div>
-
-        {customerMode === 'existing' && selectedCustomerNumber && (
-          <p className="text-xs font-bold text-blue-700 mb-2 px-0.5">
-            選択中: 顧客管理番号 {selectedCustomerNumber}
-            <button
-              type="button"
-              className="ml-2 text-[10px] text-gray-500 underline"
-              onClick={clearCustomerLink}
-            >
-              選択を解除
-            </button>
-          </p>
-        )}
 
         <div className="form-field">
           <label>顧客名 *</label>
           <input
             type="text"
             value={form.customerName}
-            onChange={(e) => {
-              update('customerName', e.target.value);
-              if (customerMode === 'existing' && selectedCustomerId) {
-                clearCustomerLink();
-              }
-            }}
+            onChange={(e) => update('customerName', e.target.value)}
             placeholder="氏名または会社名"
           />
         </div>
-
-        {customerMode === 'existing' && customerSuggestions.length > 0 && (
-          <div className="mb-3 rounded-xl border border-blue-100 bg-blue-50/50 p-2 max-h-[200px] overflow-y-auto">
-            <p className="text-[10px] font-bold text-blue-800 mb-1.5 px-1">候補（タップで選択）</p>
-            <div className="flex flex-col gap-1">
-              {customerSuggestions.map((row) => (
-                <button
-                  key={row.id}
-                  type="button"
-                  className={`text-left text-xs p-2 rounded-lg border transition-colors ${
-                    selectedCustomerId === row.id
-                      ? 'border-line-green bg-line-green-light'
-                      : 'border-gray-200 bg-white active:bg-gray-50'
-                  }`}
-                  onClick={() => applyCustomerRow(row)}
-                >
-                  <span className="font-bold text-gray-900">{row.customer_name}</span>
-                  {row.customer_number && (
-                    <span className="ml-1.5 text-[10px] text-blue-600 font-mono">{row.customer_number}</span>
-                  )}
-                  <span className="block text-[10px] text-gray-500 truncate">{row.address}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {customerMode === 'existing' && selectedCustomerId && projectHistory.length > 0 && (
-          <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
-            <p className="text-xs font-bold text-gray-800 mb-2 flex items-center gap-1">
-              <span className="material-icons text-base text-gray-500">history</span>
-              工事履歴（同一顧客）
-            </p>
-            <ul className="space-y-2 max-h-[180px] overflow-y-auto">
-              {projectHistory.map((h) => (
-                <li key={h.id} className="text-[11px] border-b border-gray-100 pb-2 last:border-0">
-                  <span className="font-mono font-semibold text-gray-800">{h.project_number ?? '—'}</span>
-                  <span className="mx-1 text-gray-400">·</span>
-                  <span>{PROJECT_STATUS_LABEL[h.status] ?? h.status}</span>
-                  <span className="mx-1 text-gray-400">·</span>
-                  <span>{h.inquiry_date}</span>
-                  {h.work_description && (
-                    <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{h.work_description}</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
 
         <div className="form-field">
           <label>顧客名（カナ）</label>
