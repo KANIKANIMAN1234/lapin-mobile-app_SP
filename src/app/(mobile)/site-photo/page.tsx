@@ -1,17 +1,14 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useProjects } from '@/hooks/useProjects';
 import { useAuthStore } from '@/stores/authStore';
+import { createClient } from '@/lib/supabase';
+import { fetchPhotoPhaseOptions } from '@/lib/photoPhaseOptions';
 import { Toast } from '@/components/ui/Toast';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { useToast } from '@/hooks/useToast';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
-import type { PhotoCategory } from '@/types';
-
-const PHOTO_CATEGORIES: PhotoCategory[] = [
-  '契約前', '現調', '施工前', '下地', '施工中', '施工後', '完工', 'その他'
-];
 
 const WORK_TYPES_MAP: Record<string, string[]> = {
   '外壁塗装': ['下塗り', '中塗り', '上塗り', '養生'],
@@ -42,9 +39,10 @@ export default function SitePhotoPage() {
   const { data: projects = [] } = useProjects();
   const { toasts, showToast, removeToast } = useToast();
 
+  const [phaseOptions, setPhaseOptions] = useState<string[]>([]);
   const [projectId, setProjectId] = useState('');
   const [photoDate, setPhotoDate] = useState(today());
-  const [category, setCategory] = useState<PhotoCategory>('施工中');
+  const [photoPhase, setPhotoPhase] = useState('');
   const [workType, setWorkType] = useState('');
   const [availableWorkTypes, setAvailableWorkTypes] = useState<string[]>([]);
   const [memo, setMemo] = useState('');
@@ -53,6 +51,18 @@ export default function SitePhotoPage() {
   const [loading, setLoading] = useState(false);
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchPhotoPhaseOptions().then((opts) => {
+      if (cancelled) return;
+      setPhaseOptions(opts);
+      setPhotoPhase((prev) => (prev && opts.includes(prev) ? prev : opts[0] ?? ''));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const { isRecording, voiceStatus, toggleVoice, transcribing } = useVoiceInput({
     currentText: memo,
@@ -89,22 +99,51 @@ export default function SitePhotoPage() {
       showToast('案件を選択してください', 'error');
       return;
     }
+    if (!user?.id) {
+      showToast('ログインが必要です', 'error');
+      return;
+    }
+    if (!photoPhase) {
+      showToast('撮影フェーズを選択してください', 'error');
+      return;
+    }
     if (photos.length === 0) {
       showToast('写真を選択してください', 'error');
       return;
     }
 
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 2000));
-    setLoading(false);
-    showToast(`${photos.length}枚の写真をアップロードしました`, 'success');
-    setProjectId('');
-    setPhotoDate(today());
-    setCategory('施工中');
-    setWorkType('');
-    setMemo('');
-    setPhotos([]);
-    setAvailableWorkTypes([]);
+    const supabase = createClient();
+    try {
+      for (let i = 0; i < photos.length; i++) {
+        const dataUrl = photos[i];
+        const fakeFileId = `mobile_${Date.now()}_${i}`;
+        const meta = [photoDate, photoPhase, workType, memo.replace(/\s+/g, ' ').trim()].filter(Boolean).join('_');
+        const fileName = (meta || `site_photo_${i}`).slice(0, 200);
+        const { error } = await supabase.from('t_photos').insert({
+          project_id: projectId,
+          type: photoPhase,
+          file_id: fakeFileId,
+          drive_url: dataUrl,
+          thumbnail_url: dataUrl,
+          file_name: fileName || null,
+          uploaded_by: user.id,
+        });
+        if (error) throw error;
+      }
+      showToast(`${photos.length}枚の写真を登録しました`, 'success');
+      setProjectId('');
+      setPhotoDate(today());
+      setPhotoPhase(phaseOptions[0] ?? '');
+      setWorkType('');
+      setMemo('');
+      setPhotos([]);
+      setAvailableWorkTypes([]);
+    } catch (e) {
+      showToast('登録に失敗しました: ' + String(e), 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -136,11 +175,16 @@ export default function SitePhotoPage() {
         </div>
 
         <div className="form-field">
-          <label>カテゴリ</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value as PhotoCategory)}>
-            {PHOTO_CATEGORIES.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
+          <label>撮影フェーズ</label>
+          <p className="text-xs text-gray-500 mb-1">管理画面の「マスター管理」で追加・変更できます。</p>
+          <select value={photoPhase} onChange={(e) => setPhotoPhase(e.target.value)}>
+            {phaseOptions.length === 0 ? (
+              <option value="">読み込み中...</option>
+            ) : (
+              phaseOptions.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))
+            )}
           </select>
         </div>
 
