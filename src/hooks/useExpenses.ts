@@ -73,8 +73,15 @@ export function useCreateExpense() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      const pid = data && typeof data === 'object' && 'project_id' in data && data.project_id
+        ? String(data.project_id)
+        : null;
+      if (pid) {
+        queryClient.invalidateQueries({ queryKey: ['project', pid] });
+        queryClient.invalidateQueries({ queryKey: ['project-expenses', pid] });
+      }
     },
   });
 }

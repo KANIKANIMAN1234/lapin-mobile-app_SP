@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { geocodeAddressServer } from '@/lib/geocode-server';
 
 type RegistrationKind = 'new' | 'existing';
 
@@ -13,6 +14,8 @@ interface Body {
   phone: string;
   email?: string | null;
   workDescription: string;
+  /** 案件名（空可・Drive フォルダ名の先頭ラベル優先） */
+  projectTitle?: string | null;
   workTypes: string[];
   estimatedAmount: number;
   acquisitionRoute: string;
@@ -185,6 +188,7 @@ export async function POST(req: NextRequest) {
         phone: body.phone.trim(),
         email: body.email?.trim() || null,
         work_description: workDesc,
+        project_title: body.projectTitle?.trim() || null,
         work_type: body.workTypes,
         estimated_amount: Number(body.estimatedAmount) || 0,
         acquisition_route: body.acquisitionRoute ?? '',
@@ -216,10 +220,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    let geocoded = false;
+    const addrForGeo = [body.postalCode?.trim(), body.address.trim()].filter(Boolean).join(' ');
+    if (addrForGeo) {
+      const coords = await geocodeAddressServer(addrForGeo);
+      if (coords) {
+        const { error: geoErr } = await admin
+          .from('t_projects')
+          .update({ lat: coords.lat, lng: coords.lng })
+          .eq('id', proj.id);
+        if (geoErr) {
+          console.error('[register-project] geocode lat/lng save', geoErr);
+        } else {
+          geocoded = true;
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       projectId: proj.id,
       customerId: proj.customer_id,
+      geocoded,
     });
   } catch (e) {
     console.error('[register-project]', e);

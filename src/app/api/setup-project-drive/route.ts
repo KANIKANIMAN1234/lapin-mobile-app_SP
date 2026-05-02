@@ -60,11 +60,16 @@ function createAdmin() {
 
 function projectFolderLabel(
   projectNumber: string | null,
+  projectTitle: string | null | undefined,
   workType: string[],
   workDescription: string,
   customerName: string
 ): string {
+  const titlePart = projectTitle?.trim()
+    ? sanitizeDriveSegment(projectTitle.trim(), 100)
+    : '';
   const jobName =
+    titlePart ||
     (workType?.length ? workType.join('・') : '') ||
     (workDescription?.trim() ? sanitizeDriveSegment(workDescription.split('\n')[0] ?? '', 80) : '') ||
     customerName;
@@ -114,6 +119,7 @@ export async function POST(req: NextRequest) {
         `
         id,
         project_number,
+        project_title,
         customer_name,
         work_type,
         work_description,
@@ -140,6 +146,7 @@ export async function POST(req: NextRequest) {
     const row = project as unknown as {
       id: string;
       project_number: string | null;
+      project_title: string | null;
       customer_name: string;
       work_type: string[];
       work_description: string;
@@ -220,6 +227,7 @@ export async function POST(req: NextRequest) {
 
     const projLabel = projectFolderLabel(
       row.project_number,
+      row.project_title,
       row.work_type ?? [],
       row.work_description ?? '',
       row.customer_name

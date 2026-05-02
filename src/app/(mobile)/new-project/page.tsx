@@ -9,7 +9,10 @@ import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { createClient } from '@/lib/supabase';
 
 const WORK_TYPES = ['外壁塗装', '屋根塗装', 'キッチン', '浴室', 'トイレ', '内装', '外構', 'その他'];
-const ROUTES = ['チラシ', 'Web自然流入', 'Web広告', '新聞', '紹介', 'イベント', 'OB施策', 'LINE'];
+const ROUTES = ['チラシ', 'Web自然流入', 'Web広告', '新聞', '紹介', 'イベント', 'OB施策', 'OB顧客', 'LINE'];
+
+/** 既存リピート登録時のデフォルト取得経路 */
+const ROUTE_FOR_EXISTING_REPEAT = 'OB顧客';
 
 function todayStr() {
   return new Date().toISOString().split('T')[0];
@@ -51,6 +54,8 @@ interface FormState {
   address: string;
   phone: string;
   email: string;
+  /** 案件名（Google Drive 案件フォルダ名の先頭に優先使用） */
+  projectTitle: string;
   workDesc: string;
   workTypes: string[];
   amount: string;
@@ -77,6 +82,7 @@ export default function NewProjectPage() {
     address: '',
     phone: '',
     email: '',
+    projectTitle: '',
     workDesc: '',
     workTypes: [],
     amount: '',
@@ -187,6 +193,7 @@ export default function NewProjectPage() {
       phone: c.phone,
       email: c.email ?? '',
       assigned: '',
+      route: ROUTE_FOR_EXISTING_REPEAT,
     }));
     void (async () => {
       try {
@@ -296,6 +303,7 @@ export default function NewProjectPage() {
           address: modalData.address,
           phone: modalData.phone,
           email: modalData.email || null,
+          projectTitle: modalData.projectTitle?.trim() || null,
           workDescription: modalData.workDesc || modalData.workTypes.join(','),
           workTypes: modalData.workTypes,
           estimatedAmount: Number(modalData.amount),
@@ -329,6 +337,7 @@ export default function NewProjectPage() {
             projectNumber: undefined,
             customerName: modalData.customerName,
             address: modalData.address,
+            projectTitle: modalData.projectTitle.trim() || undefined,
             workDescription: modalData.workDesc || undefined,
             workType: modalData.workTypes,
             estimatedAmount: Number(modalData.amount),
@@ -410,6 +419,7 @@ export default function NewProjectPage() {
         address: '',
         phone: '',
         email: '',
+        projectTitle: '',
         workDesc: '',
         workTypes: [],
         amount: '',
@@ -492,6 +502,7 @@ export default function NewProjectPage() {
                 <p>顧客名: {modalData.customerName}{modalData.customerNameKana ? `（${modalData.customerNameKana}）` : ''}</p>
                 <p>住所: {modalData.address}</p>
                 <p>電話: {modalData.phone}</p>
+                {modalData.projectTitle.trim() && <p>案件名: {modalData.projectTitle}</p>}
                 {modalData.workDesc && <p>工事内容: {modalData.workDesc}</p>}
                 <p>工事種別: {modalData.workTypes.join('・')}</p>
                 <p>見込み金額: ¥{Number(modalData.amount).toLocaleString()}</p>
@@ -537,7 +548,9 @@ export default function NewProjectPage() {
               setRegistrationKind(v);
               if (v === 'new') {
                 setSelectedCustomerId(null);
-                setForm((prev) => ({ ...prev, assigned: '' }));
+                setForm((prev) => ({ ...prev, assigned: '', route: '' }));
+              } else {
+                setForm((prev) => ({ ...prev, route: ROUTE_FOR_EXISTING_REPEAT }));
               }
             }}
             className="w-full"
@@ -639,6 +652,19 @@ export default function NewProjectPage() {
           <span className="material-icons text-line-green">assignment</span>
           案件情報
         </h3>
+
+        <div className="form-field">
+          <label>案件名</label>
+          <input
+            type="text"
+            value={form.projectTitle}
+            onChange={(e) => update('projectTitle', e.target.value)}
+            placeholder="例：山田様邸 外壁・屋根塗装"
+          />
+          <p className="text-[0.65rem] text-gray-500 mt-1">
+            未入力の場合は、工事種別・工事内容から Google Drive のフォルダ名が自動で付きます。
+          </p>
+        </div>
 
         <div className="form-field">
           <label>工事種別 *（複数選択可）</label>

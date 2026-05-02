@@ -29,6 +29,8 @@ export interface Project {
   /** 顧客マスタ（m_customers）への参照 */
   customer_id?: string | null;
   customer_name: string;
+  /** 案件名（Drive フォルダ名の優先ラベル） */
+  project_title?: string | null;
   customer_name_kana?: string;
   postal_code?: string;
   address: string;

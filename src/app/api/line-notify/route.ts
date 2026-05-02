@@ -5,6 +5,8 @@ export interface LineNotifyPayload {
   projectNumber?: string;
   customerName: string;
   address: string;
+  /** 案件名（任意） */
+  projectTitle?: string;
   workDescription?: string;
   workType: string[];
   estimatedAmount: number;
@@ -76,6 +78,7 @@ function buildProjectFlex(data: LineNotifyPayload): object {
         { type: 'text', text: data.customerName, weight: 'bold', size: 'xl', color: '#333333' },
         { type: 'separator', margin: 'md' },
         infoRow('住所', data.address),
+        ...(data.projectTitle ? [infoRow('案件名', data.projectTitle)] : []),
         ...(data.workDescription ? [infoRow('案件概要', data.workDescription)] : []),
         infoRow('工事種別', data.workType.join('・')),
         infoRow('見込み金額', amount),
@@ -117,6 +120,7 @@ function buildTextMessage(data: LineNotifyPayload): string {
     (data.projectNumber ? `管理番号: ${data.projectNumber}\n` : '') +
     `顧客名: ${data.customerName}\n` +
     `住所: ${data.address}\n` +
+    (data.projectTitle ? `案件名: ${data.projectTitle}\n` : '') +
     (data.workDescription ? `案件概要: ${data.workDescription}\n` : '') +
     `工事種別: ${data.workType.join('・')}\n` +
     `見込み金額: ${amount}\n` +
