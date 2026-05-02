@@ -26,6 +26,8 @@ export type ProjectStatus =
 export interface Project {
   id: string;
   project_number: string;
+  /** 顧客マスタ（m_customers）への参照 */
+  customer_id?: string | null;
   customer_name: string;
   customer_name_kana?: string;
   postal_code?: string;
