@@ -348,49 +348,15 @@ export default function NewProjectPage() {
         </h3>
 
         <div className="form-field">
-          <label className="mb-2 block">登録区分</label>
-          <div className="flex flex-col gap-3">
-            <label
-              className={`flex w-full cursor-pointer items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors ${
-                registrationKind === 'new'
-                  ? 'border-line-green bg-[var(--line-green-light)]'
-                  : 'border-gray-200 bg-white'
-              }`}
-            >
-              <input
-                type="radio"
-                name="registration-kind"
-                className="mt-0.5 h-4 w-4 shrink-0 accent-[#06C755]"
-                checked={registrationKind === 'new'}
-                onChange={() => setRegistrationKind('new')}
-              />
-              <span className="min-w-0 flex-1 text-sm leading-snug text-gray-900">
-                新規顧客<span className="text-gray-600">（初回のご依頼）</span>
-              </span>
-            </label>
-            <label
-              className={`flex w-full cursor-pointer items-start gap-3 rounded-xl border-2 p-3 text-left transition-colors ${
-                registrationKind === 'existing'
-                  ? 'border-line-green bg-[var(--line-green-light)]'
-                  : 'border-gray-200 bg-white'
-              }`}
-            >
-              <input
-                type="radio"
-                name="registration-kind"
-                className="mt-0.5 h-4 w-4 shrink-0 accent-[#06C755]"
-                checked={registrationKind === 'existing'}
-                onChange={() => setRegistrationKind('existing')}
-              />
-              <div className="min-w-0 flex-1 text-sm leading-snug text-gray-900">
-                <span className="font-medium">既存顧客</span>
-                <span className="text-gray-600">（追加・リピート工事）</span>
-                <p className="mt-1.5 text-xs leading-relaxed text-gray-500">
-                  下の「氏名または会社名」に入力すると候補が表示されます。候補から選択してください。
-                </p>
-              </div>
-            </label>
-          </div>
+          <label>登録区分</label>
+          <select
+            value={registrationKind}
+            onChange={(e) => setRegistrationKind(e.target.value as 'new' | 'existing')}
+            className="w-full"
+          >
+            <option value="new">新規顧客</option>
+            <option value="existing">既存リピート</option>
+          </select>
         </div>
 
         <div className="form-field">
